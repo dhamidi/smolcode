@@ -99,25 +99,64 @@ func recallMemory(args map[string]any) (map[string]any, error) {
 			return nil, fmt.Errorf("recall_memory: no facts found matching '%s'", about)
 		}
 
-		// Get the first matching file
-		// rg output has one file per line
-		firstFilePath := strings.SplitN(outputStr, "\n", 2)[0]
+		// Process all matching files
+		filePaths := strings.Split(outputStr, "\n")
+		numMatches := len(filePaths)
+		maxResults := 20
 
-		// Extract fact ID from the file path
-		fileName := filepath.Base(firstFilePath)
-		extractedID := strings.TrimSuffix(fileName, ".md")
+		var matches []map[string]string
+		var remainingIDs []string
 
-		// Read the content of the matched file
-		content, err := os.ReadFile(firstFilePath) // Use the path rg returned
-		if err != nil {
-			// This shouldn't happen if rg found it, but handle defensively
-			return nil, fmt.Errorf("recall_memory: error reading matched fact file '%s': %w", firstFilePath, err)
+		for i, filePath := range filePaths {
+			if filePath == "" { // Skip empty lines if any
+				continue
+			}
+			// Clean up potential carriage returns from rg output on Windows
+			filePath = strings.TrimSpace(filePath)
+			if filePath == "" { // Skip if it was just whitespace
+				continue
+			}
+
+			fileName := filepath.Base(filePath)
+			extractedID := strings.TrimSuffix(fileName, ".md")
+
+			if len(matches) < maxResults { // Check against actual matches found so far
+				// Read the content of the matched file
+				content, err := os.ReadFile(filePath) // Use the path rg returned
+				if err != nil {
+					// Check if file exists first before returning error, rg might return deleted file paths?
+					if os.IsNotExist(err) {
+						// File might have been deleted between rg finding it and us reading it. Skip it.
+						// Optionally log this occurrence.
+						fmt.Fprintf(os.Stderr, "recall_memory: warning: matched file disappeared before reading: %s\n", filePath)
+						continue
+					}
+					// For other errors, return an error, as partial results might be confusing.
+					return nil, fmt.Errorf("recall_memory: error reading matched fact file '%s': %w", filePath, err)
+				}
+				matches = append(matches, map[string]string{
+					"id":   extractedID,
+					"fact": string(content),
+				})
+			} else {
+				remainingIDs = append(remainingIDs, extractedID)
+			}
 		}
 
-		return map[string]any{
-			"id":   extractedID,
-			"fact": string(content),
-		}, nil
+		// Check if any valid matches were actually processed
+		if len(matches) == 0 && len(remainingIDs) == 0 {
+			// This could happen if all files found by rg disappeared before reading or rg returned only empty lines
+			return nil, fmt.Errorf("recall_memory: no accessible facts found matching '%s'", about)
+		}
+
+		result := map[string]any{
+			"matches": matches,
+		}
+		if len(remainingIDs) > 0 {
+			result["remaining_ids"] = remainingIDs
+		}
+
+		return result, nil
 
 	} else {
 		// Neither factID nor about was provided
