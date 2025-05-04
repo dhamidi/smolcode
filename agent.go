@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors" // Added import
 	"fmt"
 	"os"
 	"strings"
@@ -39,26 +40,34 @@ func Code() {
 		Add(ListChangesTool).
 		Add(RunCommandTool)
 
-	agent := NewAgent(client, getUserMessage, tools)
+	systemPrompt, err := readFileContent("smolcode.md")
+	if err != nil {
+		fmt.Printf("Error reading smolcode.md: %s\n", err.Error())
+		return
+	}
+
+	agent := NewAgent(client, getUserMessage, tools, systemPrompt)
 	if err := agent.Run(ctx); err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
 }
 
-func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox) *Agent {
+func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string) *Agent {
 	return &Agent{
-		client:         client,
-		getUserMessage: getUserMessage,
-		tools:          tools,
-		tracingEnabled: false,
+		client:            client,
+		getUserMessage:    getUserMessage,
+		tools:             tools,
+		tracingEnabled:    false,
+		systemInstruction: systemInstruction,
 	}
 }
 
 type Agent struct {
-	client         *genai.Client
-	getUserMessage func() (string, bool)
-	tools          ToolBox
-	tracingEnabled bool
+	client            *genai.Client
+	getUserMessage    func() (string, bool)
+	tools             ToolBox
+	tracingEnabled    bool
+	systemInstruction string
 }
 
 func (agent *Agent) EnableTracing() *Agent {
@@ -164,12 +173,37 @@ func (agent *Agent) trace(direction string, arg any) {
 func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Content) (*genai.GenerateContentResponse, error) {
 	agent.trace(">", conversation)
 	response, err := agent.client.Models.GenerateContent(ctx, "gemini-2.5-pro-preview-03-25", conversation, &genai.GenerateContentConfig{
-		MaxOutputTokens: 1024,
-		Tools:           []*genai.Tool{agent.tools.List()},
+		MaxOutputTokens:   4 * 1024,
+		Tools:             []*genai.Tool{agent.tools.List()},
+		SystemInstruction: agent.systemPrompt(),
 	})
 
 	agent.trace("<", response)
 	return response, err
+}
+
+func (agent *Agent) systemPrompt() *genai.Content {
+	if strings.TrimSpace(agent.systemInstruction) == "" {
+		return nil
+	}
+
+	return genai.NewContentFromText(agent.systemInstruction, genai.RoleUser)
+}
+
+// readFileContent reads the content of a file.
+// If the file doesn't exist, it returns an empty string and no error.
+// For other errors, it returns an empty string and the error.
+func readFileContent(filepath string) (string, error) {
+	content, err := os.ReadFile(filepath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// File not found is not an error in this context, return empty string.
+			return "", nil
+		}
+		// For other errors, return the error.
+		return "", fmt.Errorf("reading file %q: %w", filepath, err)
+	}
+	return string(content), nil
 }
 
 func AsJSON(value any) string {
