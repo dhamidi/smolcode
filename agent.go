@@ -162,6 +162,22 @@ func (agent *Agent) Run(ctx context.Context) error {
 		agent.history = append(agent.history, toolResults...)
 	}
 
+	// Save conversation history after the loop exits
+	fmt.Println("\nExiting... Saving conversation history to smolcode.json")
+	historyJSON, err := json.MarshalIndent(agent.history, "", "  ")
+	if err != nil {
+		fmt.Printf("Error marshalling conversation history: %v\n", err)
+		// Decide if we should return the error or just log it and exit cleanly
+	} else {
+		err = os.WriteFile("smolcode.json", historyJSON, 0644)
+		if err != nil {
+			fmt.Printf("Error writing conversation file smolcode.json: %v\n", err)
+			// Decide if we should return the error or just log it and exit cleanly
+		} else {
+			fmt.Println("Conversation history saved successfully.")
+		}
+	}
+
 	return nil
 }
 
