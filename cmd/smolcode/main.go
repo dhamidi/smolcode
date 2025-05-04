@@ -24,5 +24,5 @@ func main() {
 
 
 	// Call the main agent function (needs modification to accept initialConversation)
-	smolcode.Code() // Pass initialConversation here later
+	smolcode.Code(conversationPath) // Pass initialConversation here later
 }

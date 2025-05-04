@@ -12,7 +12,8 @@ import (
 	"google.golang.org/genai"
 )
 
-func Code() {
+func Code(conversationFilename string) {
+	initialHistory := LoadConversationFromFile(conversationFilename)
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  os.Getenv("GEMINI_API_KEY"),
@@ -46,19 +47,20 @@ func Code() {
 		return
 	}
 
-	agent := NewAgent(client, getUserMessage, tools, systemPrompt)
+	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistory)
 	if err := agent.Run(ctx); err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
 }
 
-func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string) *Agent {
+func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content) *Agent {
 	return &Agent{
 		client:            client,
 		getUserMessage:    getUserMessage,
 		tools:             tools,
 		tracingEnabled:    false,
 		systemInstruction: systemInstruction,
+		history:           initialHistory, // Initialize history
 	}
 }
 
@@ -68,6 +70,7 @@ type Agent struct {
 	tools             ToolBox
 	tracingEnabled    bool
 	systemInstruction string
+	history           []*genai.Content // Added field for conversation history
 }
 
 func (agent *Agent) EnableTracing() *Agent {
@@ -81,7 +84,11 @@ func (agent *Agent) DisableTracing() *Agent {
 }
 
 func (agent *Agent) Run(ctx context.Context) error {
-	conversation := []*genai.Content{}
+	// Use agent.history directly. Ensure it's not nil.
+	if agent.history == nil {
+		agent.history = []*genai.Content{}
+	}
+	// conversation := []*genai.Content{} // Remove this line
 	fmt.Println("Chat with Gemini (use 'Ctrl-c' to quit)")
 	fmt.Printf("Available tools: %s\n", strings.Join(agent.tools.Names(), ", "))
 	readUserInput := true
@@ -102,10 +109,10 @@ func (agent *Agent) Run(ctx context.Context) error {
 				continue
 			}
 			userMessage := genai.NewContentFromText(userInput, genai.RoleUser)
-			conversation = append(conversation, userMessage)
+			agent.history = append(agent.history, userMessage)
 		}
 
-		response, err := agent.runInference(ctx, conversation)
+		response, err := agent.runInference(ctx, agent.history)
 		if err != nil {
 			return err
 		}
@@ -122,7 +129,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 			readUserInput = true
 			continue
 		}
-		conversation = append(conversation, responseMessage)
+		agent.history = append(agent.history, responseMessage)
 		toolResults := []*genai.Content{}
 
 		for _, content := range responseMessage.Parts {
@@ -140,7 +147,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 
 		readUserInput = false
-		conversation = append(conversation, toolResults...)
+		agent.history = append(agent.history, toolResults...)
 	}
 
 	return nil
