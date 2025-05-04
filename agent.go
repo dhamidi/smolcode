@@ -112,7 +112,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 				continue
 			}
 			if strings.TrimSpace(userInput) == "/reload" {
-				err := agent.reload(ctx)
+				err := agent.reload()
 				if err != nil {
 					fmt.Printf("\u001b[91mError\u001b[0m: Failed to reload: %v\n", err)
 				}
@@ -209,7 +209,7 @@ func (agent *Agent) systemPrompt() *genai.Content {
 	return genai.NewContentFromText(agent.systemInstruction, genai.RoleUser)
 }
 
-func (agent *Agent) reload(ctx context.Context) error {
+func (agent *Agent) reload() error {
 	timestamp := time.Now().Unix()
 	filename := fmt.Sprintf("smolcode-%d.json", timestamp)
 
