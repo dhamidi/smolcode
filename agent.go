@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec" // Added
+
 	// Added
 	"strings"
 	"syscall" // Added
@@ -231,7 +232,7 @@ func (agent *Agent) reload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to write conversation file %q: %w", filename, err)
 	}
-	fmt.Printf("Conversation saved to %s\\n", filename) // Use \\n for newline in format string
+	fmt.Printf("Conversation saved to %s\n", filename) // Use \n for newline in format string
 
 	// 4. Prepare arguments for the new process
 	goCmdPath, err := exec.LookPath("go")
@@ -252,8 +253,8 @@ func (agent *Agent) reload(ctx context.Context) error {
 	}
 
 	// Use syscall.Exec to replace the current process
-	fmt.Printf("Reloading with command: %s %s\\n", goCmdPath, strings.Join(args, " ")) // Use strings.Join(args, " ") for clarity
-	env := os.Environ()                                                                // Use current environment variables
+	fmt.Printf("Reloading with command: %s\n", strings.Join(args, " ")) // Use strings.Join(args, " ") for clarity
+	env := os.Environ()                                                 // Use current environment variables
 	err = syscall.Exec(goCmdPath, args, env)
 	if err != nil {
 		// If syscall.Exec returns, it means an error occurred.
