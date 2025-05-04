@@ -101,13 +101,12 @@ func recallMemory(args map[string]any) (map[string]any, error) {
 
 		// Process all matching files
 		filePaths := strings.Split(outputStr, "\n")
-		numMatches := len(filePaths)
 		maxResults := 20
 
 		var matches []map[string]string
 		var remainingIDs []string
 
-		for i, filePath := range filePaths {
+		for _, filePath := range filePaths {
 			if filePath == "" { // Skip empty lines if any
 				continue
 			}
