@@ -65,13 +65,16 @@ func Code(conversationFilename string) {
 		return
 	}
 
-	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistory)
+	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistory, "main")
 	if err := agent.Run(ctx); err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
 }
 
-func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content) *Agent {
+func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content, name string) *Agent {
+	if name == "" {
+		name = "main"
+	}
 	return &Agent{
 		client:            client,
 		getUserMessage:    getUserMessage,
@@ -79,11 +82,12 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		tracingEnabled:    false,
 		systemInstruction: systemInstruction,
 		history:           initialHistory,
+		name:              name, // Set the name field
 	}
 }
 
 type Agent struct {
-	Name              string
+	name              string
 	client            *genai.Client
 	getUserMessage    func() (string, bool)
 	tools             ToolBox
