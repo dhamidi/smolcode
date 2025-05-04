@@ -17,13 +17,17 @@ var CreateCheckpointTool = &ToolDefinition{
 					`
 Store a summary of recent changes in git with the given commit message.
 
+Always list_changes to get input for creating a checkpoint.
+
+DO NOT ask the user for a commit message.
+
+In the body of the commit messsage, include a summary of each change.
+
 Commit messages MUST follow the conventional commit format:
 
 <type>[optional scope]: <description>
 
-[optional body]
-
-[optional footer(s)]
+[required body]
 
 The commit contains the following structural elements, to communicate intent to the consumers of your library:
 
