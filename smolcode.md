@@ -24,4 +24,4 @@ You favor simple, straightforward solutions, making code work with as few outsid
 
 ## Comment Policy
 
-Comments in the codebase should explain *why* the code is the way it is, especially if the reason is non-obvious. Avoid comments that simply restate what the code does.
+Comments in the codebase should explain _why_ the code is the way it is, especially if the reason is non-obvious. Avoid comments that simply restate what the code does.
