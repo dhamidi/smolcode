@@ -150,7 +150,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 
 		for _, content := range responseMessage.Parts {
 			if content.Text != "" {
-				fmt.Printf("\u001b[93mGemini\u001b[0m: %s\n", strings.TrimSpace(content.Text))
+				agent.geminiMessage("%s", content.Text)
 			} else if content.FunctionCall != nil {
 				response := agent.executeTool(content.FunctionCall)
 				toolResults = append(toolResults, response)
@@ -208,6 +208,10 @@ func (agent *Agent) errorMessage(fmtStr string, value ...any) {
 
 func (agent *Agent) toolMessage(fmtStr string, value ...any) {
 	fmt.Printf("\u001b[95mTool\u001b[0m: "+fmtStr+"\n", value...)
+}
+
+func (agent *Agent) geminiMessage(fmtStr string, value ...any) {
+	fmt.Printf("\u001b[93mGemini\u001b[0m: "+fmtStr+"\n", value...)
 }
 
 func (agent *Agent) trace(direction string, arg any) {
