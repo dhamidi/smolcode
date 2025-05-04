@@ -114,7 +114,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 			if strings.TrimSpace(userInput) == "/reload" {
 				err := agent.reload()
 				if err != nil {
-					fmt.Printf("\u001b[91mError\u001b[0m: Failed to reload: %v\n", err)
+					agent.errorMessage("Failed to reload: %v", err)
 				}
 				// Continue the loop to allow the user to try again or enter a different command if reload fails.
 				// If reload succeeds, the process is replaced by syscall.Exec, so this 'continue' is not reached.
@@ -130,14 +130,14 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 
 		if len(response.Candidates) == 0 {
-			fmt.Printf("\u001b[91mError\u001b[0m: empty response received\n")
+			agent.errorMessage("empty response received")
 			readUserInput = true
 			continue
 		}
 
 		responseMessage := response.Candidates[0].Content
 		if AsJSON(responseMessage.Parts) == "[{}]" {
-			fmt.Printf("\u001b[91mError\u001b[0m: empty response received\n")
+			agent.errorMessage("empty response received")
 			readUserInput = true
 			continue
 		}
@@ -182,19 +182,19 @@ func (agent *Agent) Run(ctx context.Context) error {
 }
 
 func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
-	fmt.Printf("\u001b[95mTool\u001b[0m: %s\n", FormatFunctionCall(call))
+	agent.toolMessage("%s", FormatFunctionCall(call))
 	tool, found := agent.tools.Get(call.Name)
 	if !found {
-		fmt.Printf("\u001b[95mTool\u001b[0m: %s\n", "not found")
+		agent.toolMessage("%s", "not found")
 		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": "tool not found"}, genai.RoleUser)
 	}
 	result, err := tool.Function(call.Args)
 	if err != nil {
-		fmt.Printf("\u001b[95mTool\u001b[0m: %s\n", err)
+		agent.toolMessage("%s", err)
 		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": err.Error()}, genai.RoleUser)
 	}
 
-	fmt.Printf("\u001b[95mTool\u001b[0m: %s\n", CropText(AsJSON(result), 70))
+	agent.toolMessage("%s", CropText(AsJSON(result), 70))
 	return genai.NewContentFromFunctionResponse(call.Name, result, genai.RoleUser)
 }
 
