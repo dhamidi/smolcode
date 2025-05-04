@@ -57,7 +57,9 @@ func Code(conversationFilename string) {
 		Add(CreateCheckpointTool).
 		Add(ListChangesTool).
 		Add(RunCommandTool).
-		Add(SearchCodeTool)
+		Add(SearchCodeTool).
+		Add(CreateMemoryTool).
+		Add(RecallMemoryTool)
 
 	systemPrompt, err := readFileContent("smolcode.md")
 	if err != nil {
