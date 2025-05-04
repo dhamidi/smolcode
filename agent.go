@@ -31,7 +31,14 @@ func Code() {
 	}
 
 	tools := NewToolBox()
-	tools.Add(ReadFileTool).Add(ListFilesTool).Add(EditFileTool).Add(CreateCheckpointTool).Add(ListChangesTool).Add(RunCommandTool)
+	tools.
+		Add(ReadFileTool).
+		Add(ListFilesTool).
+		Add(EditFileTool).
+		Add(CreateCheckpointTool).
+		Add(ListChangesTool).
+		Add(RunCommandTool)
+
 	agent := NewAgent(client, getUserMessage, tools)
 	if err := agent.Run(ctx); err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
@@ -101,6 +108,11 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 
 		responseMessage := response.Candidates[0].Content
+		if AsJSON(responseMessage.Parts) == "[{}]" {
+			fmt.Printf("\u001b[91mError\u001b[0m: empty response received\n")
+			readUserInput = true
+			continue
+		}
 		conversation = append(conversation, responseMessage)
 		toolResults := []*genai.Content{}
 
