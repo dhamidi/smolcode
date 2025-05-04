@@ -19,6 +19,18 @@ import (
 
 func Code(conversationFilename string) {
 	initialHistory := LoadConversationFromFile(conversationFilename)
+
+	// Check if the conversation file is a temporary reload file and remove it after loading
+	if conversationFilename != "" && strings.HasPrefix(conversationFilename, "smolcode-") && strings.HasSuffix(conversationFilename, ".json") {
+		err := os.Remove(conversationFilename)
+		if err != nil {
+			// Log the error but continue execution
+			fmt.Fprintf(os.Stderr, "Warning: could not remove temporary conversation file %s: %v\n", conversationFilename, err)
+		} else {
+			fmt.Printf("Removed temporary conversation file: %s\n", conversationFilename)
+		}
+	}
+
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  os.Getenv("GEMINI_API_KEY"),
