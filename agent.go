@@ -83,6 +83,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 }
 
 type Agent struct {
+	Name              string
 	client            *genai.Client
 	getUserMessage    func() (string, bool)
 	tools             ToolBox
