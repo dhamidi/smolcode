@@ -17,25 +17,12 @@ func main() {
 	flag.StringVar(&conversationPath, "c", "", "Path to a JSON file to initialize the conversation (shorthand)")
 	flag.Parse()
 
-	var initialConversation []*genai.Content
+	initialConversation := smolcode.LoadConversationFromFile(conversationPath)
 
-	if conversationPath != "" {
-		// Read the file
-		data, err := os.ReadFile(conversationPath)
-		if err != nil {
-			log.Fatalf("Error reading conversation file %q: %v", conversationPath, err)
-		}
+	// TODO: Integrate initialConversation into the smolcode logic.
+	//       This will likely involve passing it to the Agent initialization.
 
-		// Deserialize JSON
-		if err := json.Unmarshal(data, &initialConversation); err != nil {
-			log.Fatalf("Error unmarshalling conversation JSON from %q: %v", conversationPath, err)
-		}
-		fmt.Printf("Loaded %d initial conversation entries from %s\n", len(initialConversation), conversationPath)
 
-		// TODO: Integrate initialConversation into the smolcode logic.
-		// Currently, it's loaded but not used beyond printing a message.
-	}
-
-	// Call the original function for now.
-	smolcode.Code()
+	// Call the main agent function (needs modification to accept initialConversation)
+	smolcode.Code() // Pass initialConversation here later
 }
