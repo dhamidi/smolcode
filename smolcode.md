@@ -21,3 +21,7 @@ After completing all steps of a plan, you create a checkpoint.
 # How you write code
 
 You favor simple, straightforward solutions, making code work with as few outside dependencies as possible.
+
+## Comment Policy
+
+Comments in the codebase should explain *why* the code is the way it is, especially if the reason is non-obvious. Avoid comments that simply restate what the code does.
