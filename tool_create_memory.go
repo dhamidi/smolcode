@@ -19,6 +19,8 @@ var CreateMemoryTool = &ToolDefinition{
 Stores facts in the knowledge base.
 
 Each fact is written to '.smolcode/facts/<fact-id>.md'. Existing facts are overwritten.
+
+Use this when you are asked to memorize or remember something.
 `,
 				),
 				Parameters: &genai.Schema{

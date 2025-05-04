@@ -28,7 +28,7 @@ or provide an 'about' search term to find a relevant fact.
 					Properties: map[string]*genai.Schema{
 						"about": {
 							Type:        genai.TypeString,
-							Description: "A search term to find relevant facts in .smolcode/facts.",
+							Description: "A search term to find relevant facts in .smolcode/facts - this is searched verbatim",
 						},
 						"factID": {
 							Type:        genai.TypeString,
