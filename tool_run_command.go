@@ -38,13 +38,6 @@ func runCommand(args map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("run_command: no command specified")
 	}
 
-	// Basic security: prevent running certain commands or using operators
-	// This is a very basic check and might need refinement.
-	if strings.ContainsAny(command, ";|&`$()<>") || strings.HasPrefix(command, "rm ") || strings.HasPrefix(command, "git ") {
-		return nil, fmt.Errorf("run_command: potentially unsafe command detected")
-	}
-
-
 	cmdParts := strings.Fields(command)
 	if len(cmdParts) == 0 {
 		return nil, fmt.Errorf("run_command: no command specified")

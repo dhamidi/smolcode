@@ -44,7 +44,7 @@ var ListFilesTool = &ToolDefinition{
 				return err
 			}
 
-			if relPath != "." {
+			if relPath != "." && relPath != ".git" {
 				if info.IsDir() {
 					files = append(files, relPath+"/")
 				} else {
