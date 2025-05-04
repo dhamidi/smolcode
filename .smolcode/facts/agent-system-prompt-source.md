@@ -1,0 +1,1 @@
+The agent's system prompt, defining its core behavior and persona, is loaded from the `smolcode.md` file.

@@ -1,0 +1,1 @@
+The agent supports a `/reload` command that saves the current session and restarts the process, allowing for updates without losing context.

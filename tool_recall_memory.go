@@ -21,6 +21,8 @@ Recalls facts from the knowledge base.
 
 Either provide a specific 'factID' to retrieve a single fact, 
 or provide an 'about' search term to find a relevant fact.
+
+When searching, prefer to search with single words and narrow down as needed.
 `,
 				),
 				Parameters: &genai.Schema{

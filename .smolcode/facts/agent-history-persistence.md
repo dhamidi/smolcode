@@ -1,0 +1,1 @@
+The agent maintains a conversation history, which is persisted to `smolcode.json` on exit or when encountering specific errors like rate limits.
