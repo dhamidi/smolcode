@@ -39,12 +39,18 @@ var ListFilesTool = &ToolDefinition{
 				return err
 			}
 
+			// Skip the .git directory entirely
+			if info.IsDir() && info.Name() == ".git" {
+				return filepath.SkipDir
+			}
+
 			relPath, err := filepath.Rel(dir, path)
 			if err != nil {
 				return err
 			}
 
-			if relPath != "." && relPath != ".git" {
+			// Add the path to the list if it's not the root directory itself
+			if relPath != "." {
 				if info.IsDir() {
 					files = append(files, relPath+"/")
 				} else {
