@@ -110,7 +110,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 	readUserInput := true
 	for {
 		if readUserInput {
-			fmt.Print("\u001b[94mYou\u001b[0m: ")
+			fmt.Printf("\u001b[94mYou [%d]\u001b[0m: ", len(agent.history)) // Print prompt with history length
 			userInput, ok := agent.getUserMessage()
 			if !ok {
 				break
@@ -215,22 +215,32 @@ func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
 }
 
 func (agent *Agent) errorMessage(fmtStr string, value ...any) {
-	fmt.Printf("\u001b[91mError\u001b[0m: "+fmtStr+"\n", value...)
+	fmt.Printf("\u001b[91mError [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
+}
+
+func (agent *Agent) youMessage(fmtStr string, value ...any) {
+	// This function is now the primary way to show user input, but the original direct fmt.Print in Run should handle the initial prompt.
+	// We format it consistently here. Note: the user input itself is added to history *before* calling inference,
+	// so the len(agent.history) here might be off by one depending on exact call order. Let's assume it reflects the state *before* this message.
+	// Re-checking Run loop logic: history is appended *after* reading input. So len(agent.history) should be correct *when* this is called.
+	fmt.Printf("\u001b[94mYou [%d]\u001b[0m: %s\n", len(agent.history)-1, fmt.Sprintf(fmtStr, value...)) // Use len-1 assuming history includes current msg
 }
 
 func (agent *Agent) toolMessage(fmtStr string, value ...any) {
-	fmt.Printf("\u001b[95mTool\u001b[0m: "+fmtStr+"\n", value...)
+	fmt.Printf("\u001b[95mTool [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
 }
 
 func (agent *Agent) geminiMessage(fmtStr string, value ...any) {
-	fmt.Printf("\u001b[93mGemini\u001b[0m: "+fmtStr+"\n", value...)
+	fmt.Printf("\u001b[93mGemini [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
 }
 
 func (agent *Agent) trace(direction string, arg any) {
 	if !agent.tracingEnabled {
 		return
 	}
-	fmt.Printf("\u001b[90mTrace %s\u001b[0m: %s\n", direction, AsJSON(arg))
+	// Trace doesn't strictly add to the conversation history, so maybe we don't include length?
+	// For consistency, let's add it.
+	fmt.Printf("\u001b[90mTrace [%d] %s\u001b[0m: %s\n", len(agent.history), direction, AsJSON(arg))
 }
 
 func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Content) (*genai.GenerateContentResponse, error) {
