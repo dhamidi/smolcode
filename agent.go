@@ -7,7 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec" // Added
+	// Added
 	"strings"
+	"syscall" // Added
+	"time"    // Added
 
 	"google.golang.org/genai"
 )
@@ -107,6 +111,18 @@ func (agent *Agent) Run(ctx context.Context) error {
 				agent.DisableTracing()
 				continue
 			}
+			// Add the new /reload command check here
+			if strings.TrimSpace(userInput) == "/reload" {
+				err := agent.reload(ctx)
+				if err != nil {
+					// If reload fails, print an error and continue the loop
+					fmt.Printf("\u001b[91mError\u001b[0m: Failed to reload: %v\n", err)
+				}
+				// If reload succeeds, the process is replaced, so we won't reach here.
+				// If it fails, we might want to continue or break depending on the desired behavior.
+				// For now, let's continue to allow the user to try again or do something else.
+				continue
+			}
 			userMessage := genai.NewContentFromText(userInput, genai.RoleUser)
 			agent.history = append(agent.history, userMessage)
 		}
@@ -194,6 +210,58 @@ func (agent *Agent) systemPrompt() *genai.Content {
 	}
 
 	return genai.NewContentFromText(agent.systemInstruction, genai.RoleUser)
+}
+
+func (agent *Agent) reload(ctx context.Context) error {
+	// 1. Generate timestamped filename
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("smolcode-%d.json", timestamp)
+
+	// 2. Serialize conversation history to JSON
+	// Ensure agent.history is properly marshaled. It might need specific handling
+	// if genai.Content contains complex types or interfaces not directly serializable.
+	// Let's assume direct marshaling works for now, but this might need refinement.
+	historyJSON, err := json.MarshalIndent(agent.history, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal conversation history: %w", err)
+	}
+
+	// 3. Write JSON to file
+	err = os.WriteFile(filename, historyJSON, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write conversation file %q: %w", filename, err)
+	}
+	fmt.Printf("Conversation saved to %s\\n", filename) // Use \\n for newline in format string
+
+	// 4. Prepare arguments for the new process
+	goCmdPath, err := exec.LookPath("go")
+	if err != nil {
+		return fmt.Errorf("failed to find 'go' executable: %w", err)
+	}
+
+	// Ensure the path to main.go is correct relative to the execution context
+	// If running from the project root, "cmd/smolcode/main.go" should be correct.
+	mainGoPath := "cmd/smolcode/main.go"
+
+	args := []string{
+		"go",       // Command itself (argv[0])
+		"run",      // Go command action
+		mainGoPath, // Main package path
+		"-c",       // Flag for conversation file
+		filename,   // The conversation filename
+	}
+
+	// Use syscall.Exec to replace the current process
+	fmt.Printf("Reloading with command: %s %s\\n", goCmdPath, strings.Join(args, " ")) // Use strings.Join(args, " ") for clarity
+	env := os.Environ()                                                                // Use current environment variables
+	err = syscall.Exec(goCmdPath, args, env)
+	if err != nil {
+		// If syscall.Exec returns, it means an error occurred.
+		return fmt.Errorf("failed to execute new process: %w", err)
+	}
+
+	// syscall.Exec should not return on success. This indicates a problem.
+	return errors.New("syscall.Exec finished unexpectedly without error, which indicates a failure")
 }
 
 // readFileContent reads the content of a file.
