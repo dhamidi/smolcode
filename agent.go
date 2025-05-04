@@ -130,6 +130,9 @@ func (agent *Agent) Run(ctx context.Context) error {
 			return err
 		}
 
+		// Print usage metadata summary
+		fmt.Printf("\u001b[90m%s\u001b[0m\n", formatUsageMetadata(response.UsageMetadata))
+
 		if len(response.Candidates) == 0 {
 			agent.errorMessage("empty response received")
 			readUserInput = true
@@ -304,6 +307,24 @@ func AsJSON(value any) string {
 		return fmt.Sprintf(`{"error": %q}`, err.Error())
 	}
 	return string(asBytes)
+}
+
+// formatUsageMetadata creates a single-line summary of token usage.
+// It highlights the prompt token count relative to the maximum allowed (1,048,576).
+func formatUsageMetadata(metadata *genai.GenerateContentResponseUsageMetadata) string {
+	if metadata == nil {
+		return "Usage metadata not available."
+	}
+	// The input token limit is 1,048,576
+	limit := 1048576
+	return fmt.Sprintf(
+		"Token Usage: Prompt=%d/%d (%d%%), Candidates=%d, Total=%d",
+		metadata.PromptTokenCount,
+		limit,
+		(metadata.PromptTokenCount*100)/int32(limit), // Calculate percentage
+		metadata.CandidatesTokenCount,
+		metadata.TotalTokenCount,
+	)
 }
 
 func CropText(in string, width int) string {
