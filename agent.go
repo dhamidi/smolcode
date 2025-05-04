@@ -146,7 +146,35 @@ func (agent *Agent) Run(ctx context.Context) error {
 
 		response, err := agent.runInference(ctx, agent.history)
 		if err != nil {
-			return err
+			// Check for the specific internal error potentially caused by rate limiting
+			if strings.Contains(err.Error(), "An internal error has occurred") {
+				fmt.Fprintf(os.Stderr, "Encountered potential rate limit error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Saving conversation to smolcode.json and pausing for 5 seconds...\n")
+
+				// Save conversation history
+				historyJSON, marshalErr := json.MarshalIndent(agent.history, "", "  ")
+				if marshalErr != nil {
+					// Log error saving history, but attempt to continue
+					fmt.Fprintf(os.Stderr, "Error marshalling conversation history during rate limit handling: %v\n", marshalErr)
+				} else {
+					writeErr := os.WriteFile("smolcode.json", historyJSON, 0644)
+					if writeErr != nil {
+						fmt.Fprintf(os.Stderr, "Error writing conversation file smolcode.json during rate limit handling: %v\n", writeErr)
+					} else {
+						fmt.Println("Conversation history saved to smolcode.json.")
+					}
+				}
+
+				// Pause execution
+				time.Sleep(5 * time.Second)
+
+				// Continue the loop to allow user interaction again
+				readUserInput = true // Ensure we prompt the user next iteration
+				continue             // Skip the rest of this iteration and start the next
+			} else {
+				// For any other error, return it to terminate the agent run
+				return err
+			}
 		}
 
 		// Print usage metadata summary

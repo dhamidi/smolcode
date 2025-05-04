@@ -29,16 +29,14 @@ or provide an 'about' search term to find a relevant fact.
 						"about": {
 							Type:        genai.TypeString,
 							Description: "A search term to find relevant facts in .smolcode/facts.",
-							Optional:    true,
 						},
 						"factID": {
 							Type:        genai.TypeString,
 							Description: "The specific ID of the fact to recall.",
-							Optional:    true,
 						},
 					},
 					// Although technically optional, validation is done in the function
-					// Required: []string{} // Neither is strictly required by schema, logic handles it
+					Required: []string{}, // Neither is strictly required by schema, logic handles it
 				},
 			},
 		},
