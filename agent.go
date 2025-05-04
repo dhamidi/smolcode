@@ -198,6 +198,14 @@ func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
 	return genai.NewContentFromFunctionResponse(call.Name, result, genai.RoleUser)
 }
 
+func (agent *Agent) errorMessage(fmtStr string, value ...any) {
+	fmt.Printf("\u001b[91mError\u001b[0m: "+fmtStr+"\n", value...)
+}
+
+func (agent *Agent) toolMessage(fmtStr string, value ...any) {
+	fmt.Printf("\u001b[95mTool\u001b[0m: "+fmtStr+"\n", value...)
+}
+
 func (agent *Agent) trace(direction string, arg any) {
 	if !agent.tracingEnabled {
 		return
