@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/dhamidi/smolcode"
-	"google.golang.org/genai" // Assuming this path is correct
+	"google.golang.org/genai"
 )
 
 func main() {
@@ -19,10 +19,5 @@ func main() {
 
 	initialConversation := smolcode.LoadConversationFromFile(conversationPath)
 
-	// TODO: Integrate initialConversation into the smolcode logic.
-	//       This will likely involve passing it to the Agent initialization.
-
-
-	// Call the main agent function (needs modification to accept initialConversation)
-	smolcode.Code(conversationPath) // Pass initialConversation here later
+	smolcode.Code(conversationPath)
 }

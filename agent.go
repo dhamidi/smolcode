@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors" // Added import
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -60,7 +60,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		tools:             tools,
 		tracingEnabled:    false,
 		systemInstruction: systemInstruction,
-		history:           initialHistory, // Initialize history
+		history:           initialHistory,
 	}
 }
 
@@ -70,7 +70,7 @@ type Agent struct {
 	tools             ToolBox
 	tracingEnabled    bool
 	systemInstruction string
-	history           []*genai.Content // Added field for conversation history
+	history           []*genai.Content
 }
 
 func (agent *Agent) EnableTracing() *Agent {
@@ -88,7 +88,6 @@ func (agent *Agent) Run(ctx context.Context) error {
 	if agent.history == nil {
 		agent.history = []*genai.Content{}
 	}
-	// conversation := []*genai.Content{} // Remove this line
 	fmt.Println("Chat with Gemini (use 'Ctrl-c' to quit)")
 	fmt.Printf("Available tools: %s\n", strings.Join(agent.tools.Names(), ", "))
 	readUserInput := true
