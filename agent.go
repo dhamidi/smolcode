@@ -149,7 +149,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 			// Check for the specific internal error potentially caused by rate limiting
 			if strings.Contains(err.Error(), "An internal error has occurred") {
 				fmt.Fprintf(os.Stderr, "Encountered potential rate limit error: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Saving conversation to smolcode.json and pausing for 5 seconds...\n")
+				fmt.Fprintf(os.Stderr, "Saving conversation to smolcode.json and pausing for 60 seconds...\n")
 
 				// Save conversation history
 				historyJSON, marshalErr := json.MarshalIndent(agent.history, "", "  ")
@@ -166,7 +166,11 @@ func (agent *Agent) Run(ctx context.Context) error {
 				}
 
 				// Pause execution
-				time.Sleep(5 * time.Second)
+				for i := 0; i < 60; i += 5 {
+					time.Sleep(5 * time.Second)
+					fmt.Printf(".")
+				}
+				fmt.Printf("\n")
 
 				// Continue the loop to allow user interaction again
 				readUserInput = true // Ensure we prompt the user next iteration
