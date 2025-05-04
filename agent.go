@@ -44,7 +44,8 @@ func Code(conversationFilename string) {
 		Add(EditFileTool).
 		Add(CreateCheckpointTool).
 		Add(ListChangesTool).
-		Add(RunCommandTool)
+		Add(RunCommandTool).
+		Add(SearchCodeTool)
 
 	systemPrompt, err := readFileContent("smolcode.md")
 	if err != nil {
