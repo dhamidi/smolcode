@@ -31,7 +31,7 @@ func Code() {
 	}
 
 	tools := NewToolBox()
-	tools.Add(ReadFileTool).Add(ListFilesTool).Add(EditFileTool)
+	tools.Add(ReadFileTool).Add(ListFilesTool).Add(EditFileTool).Add(CreateCheckpointTool).Add(ListChangesTool)
 	agent := NewAgent(client, getUserMessage, tools)
 	if err := agent.Run(ctx); err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
