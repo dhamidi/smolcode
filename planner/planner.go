@@ -43,6 +43,17 @@ func New(storageDir string) *Planner {
 	}
 }
 
+// Create initializes a new Plan in memory with the given name.
+// The ID of the plan is set to its name.
+// The plan is not persisted until Save is called.
+func (p *Planner) Create(name string) *Plan {
+	return &Plan{
+		ID:    name,
+		Steps: []*Step{},
+		name:  name, // Also set the internal name for saving
+	}
+}
+
 // Get retrieves a plan by its name from the storage directory.
 // The plan name corresponds to the filename without the .json extension.
 func (p *Planner) Get(name string) (*Plan, error) {
