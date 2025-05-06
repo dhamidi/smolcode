@@ -19,6 +19,15 @@ const (
 	memoryDBPath    = ".smolcode/memory.db"
 )
 
+// executeSmolcodeCommand runs the smolcode CLI with the given arguments.
+// It returns the combined stdout/stderr output and any error.
+func executeSmolcodeCommand(args ...string) (string, error) {
+	executablePath := os.Args[0] // Path to the currently running executable
+	cmd := exec.Command(executablePath, args...)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
 func main() {
 	// Check if the first argument is "plan"
 	if len(os.Args) > 1 && os.Args[1] == "plan" {
