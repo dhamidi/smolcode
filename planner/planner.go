@@ -10,7 +10,7 @@ import (
 
 // Planner manages plans.
 type Planner struct {
-	storageDir string // Directory where plans are stored
+	storageDir string
 }
 
 // Plan represents a collection of steps.
