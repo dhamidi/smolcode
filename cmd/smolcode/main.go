@@ -7,17 +7,28 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dhamidi/smolcode/memory" // Import the memory package
+
 	"github.com/dhamidi/smolcode"
 	"github.com/dhamidi/smolcode/planner" // Import the planner package
 )
 
-const planStoragePath = ".smolcode/plans/"
+const (
+	planStoragePath = ".smolcode/plans/"
+	memoryDBPath    = ".smolcode/memory.db"
+)
 
 func main() {
 	// Check if the first argument is "plan"
 	if len(os.Args) > 1 && os.Args[1] == "plan" {
 		handlePlanCommand(os.Args[2:])
 		return // Exit after handling plan command
+	}
+
+	// Check if the first argument is "memory"
+	if len(os.Args) > 1 && os.Args[1] == "memory" {
+		handleMemoryCommand(os.Args[2:])
+		return // Exit after handling memory command
 	}
 
 	// Default behavior (original functionality)
@@ -223,5 +234,93 @@ func handlePlanCommand(args []string) {
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown plan subcommand '%s'", subcommand)
+	}
+}
+
+// handleMemoryCommand processes subcommands for the 'memory' feature.
+func handleMemoryCommand(args []string) {
+	mgr, err := memory.New(memoryDBPath)
+	if err != nil {
+		log.Fatalf("Error initializing memory manager: %v", err)
+	}
+	defer func() {
+		if err := mgr.Close(); err != nil {
+			log.Printf("Error closing memory database: %v", err)
+		}
+	}()
+
+	if len(args) < 1 {
+		log.Println("Usage: go run cmd/smolcode/main.go memory <subcommand> [arguments]")
+		log.Fatal("Error: No memory subcommand provided.")
+	}
+
+	subcommand := args[0]
+	remainingArgs := args[1:]
+
+	switch subcommand {
+	case "add":
+		addCmd := flag.NewFlagSet("add", flag.ExitOnError)
+		addCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go memory add <id> <content>\n")
+			fmt.Fprintf(os.Stderr, "Adds or updates a memory.\n")
+		}
+		addCmd.Parse(remainingArgs)
+		if addCmd.NArg() != 2 {
+			addCmd.Usage()
+			log.Fatal("Error: 'add' requires exactly two arguments: <id> <content>")
+		}
+		memID := addCmd.Arg(0)
+		memContent := addCmd.Arg(1)
+		if err := mgr.AddMemory(memID, memContent); err != nil {
+			log.Fatalf("Error adding memory '%s': %v", memID, err)
+		}
+		fmt.Printf("Memory '%s' added/updated successfully.\n", memID)
+
+	case "get":
+		getCmd := flag.NewFlagSet("get", flag.ExitOnError)
+		getCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go memory get <id>\n")
+			fmt.Fprintf(os.Stderr, "Retrieves a memory by its ID.\n")
+		}
+		getCmd.Parse(remainingArgs)
+		if getCmd.NArg() != 1 {
+			getCmd.Usage()
+			log.Fatal("Error: 'get' requires exactly one argument: <id>")
+		}
+		memID := getCmd.Arg(0)
+		mem, err := mgr.GetMemoryByID(memID)
+		if err != nil {
+			log.Fatalf("Error retrieving memory '%s': %v", memID, err)
+		}
+		fmt.Printf("ID: %s\nContent: %s\n", mem.ID, mem.Content)
+
+	case "search":
+		searchCmd := flag.NewFlagSet("search", flag.ExitOnError)
+		searchCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go memory search <query>\n")
+			fmt.Fprintf(os.Stderr, "Searches memories by query.\n")
+		}
+		searchCmd.Parse(remainingArgs)
+		if searchCmd.NArg() != 1 {
+			searchCmd.Usage()
+			log.Fatal("Error: 'search' requires exactly one argument: <query>")
+		}
+		query := searchCmd.Arg(0)
+		mems, err := mgr.SearchMemory(query)
+		if err != nil {
+			log.Fatalf("Error searching memory with query '%s': %v", query, err)
+		}
+		if len(mems) == 0 {
+			fmt.Println("No memories found matching your query.")
+		} else {
+			fmt.Printf("Found %d memory/memories:\n", len(mems))
+			for _, mem := range mems {
+				fmt.Printf("---\nID: %s\nContent: %s\n", mem.ID, mem.Content)
+			}
+		}
+
+	default:
+		log.Printf("Usage: go run cmd/smolcode/main.go memory <subcommand> [arguments]\n")
+		log.Fatalf("Error: Unknown memory subcommand '%s'", subcommand)
 	}
 }
