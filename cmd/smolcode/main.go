@@ -241,6 +241,32 @@ func handlePlanCommand(args []string) {
 			}
 		}
 
+	case "reorder":
+		reorderCmd := flag.NewFlagSet("reorder", flag.ExitOnError)
+		reorderCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan reorder <plan-name> <step-id1> [step-id2 ...]\n")
+			fmt.Fprintf(os.Stderr, "Reorders steps within a plan. Specified step IDs are moved to the front in the given order; others follow.\n")
+		}
+		reorderCmd.Parse(remainingArgs)
+		if reorderCmd.NArg() < 2 { // Must have plan-name and at least one step-id
+			reorderCmd.Usage()
+			log.Fatal("Error: 'reorder' requires at least two arguments: <plan-name> and <step-id1> [step-id2 ...]")
+		}
+		planName := reorderCmd.Arg(0)
+		newStepOrder := reorderCmd.Args()[1:]
+
+		plan, err := plans.Get(planName)
+		if err != nil {
+			log.Fatalf("Error loading plan '%s': %v", planName, err)
+		}
+
+		plan.Reorder(newStepOrder) // Call the in-memory reorder
+
+		if err := plans.Save(plan); err != nil { // Persist the changes
+			log.Fatalf("Error saving updated plan '%s' after reordering: %v", planName, err)
+		}
+		fmt.Printf("Steps in plan '%s' reordered successfully.\n", planName)
+
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown plan subcommand '%s'", subcommand)
