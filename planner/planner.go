@@ -20,12 +20,28 @@ type Plan struct {
 	name  string  // internal name of the plan, typically the filename without extension
 }
 
+// serializablePlan is an internal struct used for JSON marshaling/unmarshaling.
+// It has exported fields corresponding to the Plan struct.
+type serializablePlan struct {
+	ID    string              `json:"id"`
+	Steps []*serializableStep `json:"steps"`
+}
+
 // Step represents a single task in a plan.
 type Step struct {
 	id          string   `json:"id"` // Short identifier, e.g., "add-tests"
 	description string   `json:"description"`
 	status      string   `json:"status"` // "DONE" or "TODO"
 	acceptance  []string `json:"acceptance"`
+}
+
+// serializableStep is an internal struct used for JSON marshaling/unmarshaling.
+// It has exported fields corresponding to the Step struct.
+type serializableStep struct {
+	Id          string   `json:"id"`
+	Description string   `json:"description"`
+	Status      string   `json:"status"`
+	Acceptance  []string `json:"acceptance"`
 }
 
 // New creates a new Planner instance.
@@ -65,15 +81,28 @@ func (p *Planner) Get(name string) (*Plan, error) {
 		return nil, fmt.Errorf("failed to read plan file %s: %w", planPath, err)
 	}
 
-	var plan Plan
-	if err := json.Unmarshal(data, &plan); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal plan %s: %w", name, err)
+	// Unmarshal into the serializable format first
+	var sPlan serializablePlan
+	if err := json.Unmarshal(data, &sPlan); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal plan data %s: %w", name, err)
 	}
 
-	// Store the internal name used to load the plan.
-	plan.name = name
+	// Convert serializablePlan back to Plan
+	plan := &Plan{
+		ID:    sPlan.ID,
+		Steps: make([]*Step, len(sPlan.Steps)),
+		name:  name, // Assign internal name from the Get parameter
+	}
+	for i, sStep := range sPlan.Steps {
+		plan.Steps[i] = &Step{
+			id:          sStep.Id,
+			description: sStep.Description,
+			status:      sStep.Status,
+			acceptance:  sStep.Acceptance,
+		}
+	}
 
-	return &plan, nil
+	return plan, nil
 }
 
 // Inspect converts the plan into a Markdown string representation.
@@ -203,7 +232,21 @@ func (p *Planner) Save(plan *Plan) error {
 	}
 	planPath := filepath.Join(p.storageDir, fmt.Sprintf("%s.json", plan.name))
 
-	data, err := json.MarshalIndent(plan, "", "  ") // Use MarshalIndent for readability
+	// Convert Plan to serializablePlan
+	sPlan := serializablePlan{
+		ID:    plan.ID,
+		Steps: make([]*serializableStep, len(plan.Steps)),
+	}
+	for i, step := range plan.Steps {
+		sPlan.Steps[i] = &serializableStep{
+			Id:          step.id,
+			Description: step.description,
+			Status:      step.status,
+			Acceptance:  step.acceptance,
+		}
+	}
+
+	data, err := json.MarshalIndent(sPlan, "", "  ") // Marshal the serializable version
 	if err != nil {
 		return fmt.Errorf("failed to marshal plan %s for saving: %w", plan.name, err)
 	}
