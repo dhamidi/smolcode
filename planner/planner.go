@@ -78,7 +78,6 @@ func (pl *Plan) Inspect() string {
 
 		// The requirement seems to put the description IN the headline, so let's stick to that.
 
-		// Acceptance criteria numbered list
 		if len(step.acceptance) > 0 {
 			builder.WriteString("Acceptance Criteria:\\n")
 			for j, criterion := range step.acceptance {
