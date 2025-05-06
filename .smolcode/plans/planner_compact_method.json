@@ -29,7 +29,7 @@
     {
       "id": "list_changes_compact",
       "description": "Use list_changes to see the modifications made to planner/planner.go.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Successfully listed file changes."
       ]

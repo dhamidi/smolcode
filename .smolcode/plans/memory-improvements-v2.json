@@ -1,6 +1,17 @@
 {
-  "id": "memory-improvements",
+  "id": "memory-improvements-v2",
   "steps": [
+    {
+      "id": "define-errnotfound",
+      "description": "Define a new error memory.ErrNotFound in memory/memory.go. Modify GetMemoryByID and Forget to return this error (or an error wrapping it) instead of leaking sql.ErrNoRows.",
+      "status": "TODO",
+      "acceptance": [
+        "memory.ErrNotFound is defined in memory/memory.go.",
+        "memory.GetMemoryByID returns an error that IS memory.ErrNotFound when a fact is not found.",
+        "memory.Forget returns an error that IS memory.ErrNotFound when a fact to be deleted is not found.",
+        "Callers are no longer required to check for sql.ErrNoRows directly."
+      ]
+    },
     {
       "id": "refactor-new-extract-schema",
       "description": "Extract SQL schema initialization from memory.New() into a separate unexported function initializeSchema(db *sql.DB) error.",
@@ -58,24 +69,14 @@
       ]
     },
     {
-      "id": "improve-recallmemory-errorcheck",
-      "description": "Change the sql.ErrNoRows check in tool_recall_memory.go (recallByID or recallMemory) to use errors.Is(err, sql.ErrNoRows).",
+      "id": "improve-recallmemory-errorcheck-custom",
+      "description": "Modify the error checking in tool_recall_memory.go (in recallByID helper or recallMemory) to use errors.Is(err, memory.ErrNotFound).",
       "status": "TODO",
       "acceptance": [
-        "The check for a 'not found' error uses errors.Is(err, sql.ErrNoRows).",
+        "The check for a 'not found' error uses errors.Is(err, memory.ErrNotFound).",
         "errors package is imported in tool_recall_memory.go.",
+        "github.com/dhamidi/smolcode/memory package (or relevant alias) is used to access memory.ErrNotFound.",
         "Existing tests for recalling a non-existent fact ID pass and return the expected error."
-      ]
-    },
-    {
-      "id": "define-errnotfound",
-      "description": "Define a new error memory.ErrNotFound in memory/memory.go. Modify GetMemoryByID and Forget to return this error (or an error wrapping it) instead of leaking sql.ErrNoRows.",
-      "status": "TODO",
-      "acceptance": [
-        "memory.ErrNotFound is defined in memory/memory.go.",
-        "memory.GetMemoryByID returns an error that IS memory.ErrNotFound when a fact is not found.",
-        "memory.Forget returns an error that IS memory.ErrNotFound when a fact to be deleted is not found.",
-        "Callers are no longer required to check for sql.ErrNoRows directly."
       ]
     }
   ]
