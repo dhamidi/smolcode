@@ -218,6 +218,23 @@ func (pl *Plan) IsCompleted() bool {
 	return pl.NextStep() == nil // If NextStep is nil, all steps are DONE
 }
 
+// List returns the names of all plans in the storage directory.
+func (p *Planner) List() ([]string, error) {
+	files, err := os.ReadDir(p.storageDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read plan storage directory %s: %w", p.storageDir, err)
+	}
+
+	var planNames []string
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			name := strings.TrimSuffix(file.Name(), ".json")
+			planNames = append(planNames, name)
+		}
+	}
+	return planNames, nil
+}
+
 // Save writes the given plan to a JSON file in the planner's storage directory.
 // The filename is derived from the plan's internal name field.
 func (p *Planner) Save(plan *Plan) error {

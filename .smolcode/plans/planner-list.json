@@ -1,0 +1,28 @@
+{
+  "id": "planner-list",
+  "steps": [
+    {
+      "id": "add-planner-list-func",
+      "description": "Implement the `List` method on the `planner.Planner` struct. This method should scan the storage directory (`.smolcode/plans/`) and return a list of all plan names (filenames without the `.json` extension).",
+      "status": "TODO",
+      "acceptance": [
+        "`planner.Planner` has a `List() ([]string, error)` method.",
+        "The `List` method correctly identifies `.json` files in the storage directory.",
+        "The method returns only the base names of the files (e.g., \"main\", \"feature-x\").",
+        "Errors during directory reading are handled and returned."
+      ]
+    },
+    {
+      "id": "add-cli-list-subcommand",
+      "description": "Add a `list` subcommand to the `plan` command in `cmd/smolcode/main.go`. This subcommand will call the new `planner.List` method and print the results.",
+      "status": "TODO",
+      "acceptance": [
+        "`cmd/smolcode/main.go` handles a `plan list` subcommand.",
+        "The subcommand calls `planner.List()`.",
+        "The list of plan names is printed to standard output, one name per line.",
+        "Errors from `planner.List()` are handled and logged appropriately.",
+        "A usage message for `plan list` is implemented."
+      ]
+    }
+  ]
+}

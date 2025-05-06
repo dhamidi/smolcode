@@ -4,7 +4,7 @@
     {
       "id": "setup-package",
       "description": "Create the `memory` package directory and `memory.go` file.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Directory `memory/` exists.",
         "File `memory/memory.go` exists with initial package declaration."
@@ -13,7 +13,7 @@
     {
       "id": "add-dependency",
       "description": "Add the necessary SQLite driver dependency.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`go get github.com/mattn/go-sqlite3` command is run successfully.",
         "`go.mod` and `go.sum` are updated."
@@ -22,7 +22,7 @@
     {
       "id": "define-structs",
       "description": "Define the `MemoryManager` and `Memory` structs in `memory/memory.go`, following the pattern of `planner/planner.go`.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`MemoryManager` struct defined with a field for the database connection.",
         "`Memory` struct defined (e.g., with ID and Content fields)."
@@ -31,7 +31,7 @@
     {
       "id": "implement-constructor",
       "description": "Implement the `New` constructor for `MemoryManager`. This function should open the SQLite database (e.g., `.smolcode/memory.db`) and initialize the schema, including the `memories` table and the `memories_fts` FTS5 virtual table.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`New(dbPath string) (*MemoryManager, error)` function is implemented.",
         "Function attempts to open/create the SQLite DB file.",
@@ -42,7 +42,7 @@
     {
       "id": "implement-close",
       "description": "Implement a `Close()` method on `MemoryManager` to properly close the database connection.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`Close() error` method is added to `MemoryManager`.",
         "Method calls the `Close()` method on the underlying database connection."
@@ -51,7 +51,7 @@
     {
       "id": "implement-add",
       "description": "Implement the `AddMemory(id string, content string) error` method on `MemoryManager` to insert or replace memories in the database.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`AddMemory` method is implemented.",
         "Method uses SQL `INSERT OR REPLACE` (or similar logic) to add/update a row in the `memories` table.",
@@ -61,7 +61,7 @@
     {
       "id": "implement-get",
       "description": "Implement the `GetMemoryByID(id string) (*Memory, error)` method on `MemoryManager` to retrieve a specific memory by its ID.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`GetMemoryByID` method is implemented.",
         "Method queries the `memories` table for the given ID.",
@@ -71,7 +71,7 @@
     {
       "id": "implement-search",
       "description": "Implement the `SearchMemory(query string) ([]*Memory, error)` method on `MemoryManager` to perform a full-text search using FTS5.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`SearchMemory` method is implemented.",
         "Method queries the `memories_fts` virtual table using `MATCH ?`.",
