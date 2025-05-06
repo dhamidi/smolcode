@@ -17,6 +17,12 @@
         "Newlines are rendered correctly",
         "Step identifiers are part of the headline"
       ]
+    },
+    {
+      "id": "improve-inspect-output",
+      "description": "In Inspect() change the headline to only contain the task index, status and ID.  The task description should be a paragraph under the headline.",
+      "status": "DONE",
+      "acceptance": []
     }
   ]
 }
