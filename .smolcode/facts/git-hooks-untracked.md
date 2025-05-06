@@ -1,0 +1,1 @@
+Modifications to files within the .git/hooks directory are not tracked by Git by default, as the .git directory itself is not part of the repository's versioned files. Therefore, 'git commit' or 'create_checkpoint' will not include these changes unless the hook management is done via a version-controlled configuration file (e.g. .pre-commit-config.yaml).
