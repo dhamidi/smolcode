@@ -22,10 +22,10 @@ type Plan struct {
 
 // Step represents a single task in a plan.
 type Step struct {
-	id          string   `json:"id"` // Short identifier, e.g., "add-tests"
-	description string   `json:"description"`
-	status      string   `json:"status"` // "DONE" or "TODO"
-	acceptance  []string `json:"acceptance"`
+	Id          string   `json:"id"` // Short identifier, e.g., "add-tests"
+	Description string   `json:"description"`
+	Status      string   `json:"status"` // "DONE" or "TODO"
+	Acceptance  []string `json:"acceptance"`
 }
 
 // New creates a new Planner instance.
@@ -87,18 +87,18 @@ func (pl *Plan) Inspect() string {
 
 	for i, step := range pl.Steps {
 		// Headline includes step number, status, and description (or ID if no description)
-		headlineText := step.description
+		headlineText := step.Description
 		if headlineText == "" {
-			headlineText = step.id // Fallback to ID if description is empty
+			headlineText = step.Id // Fallback to ID if description is empty
 		}
 		// Status is uppercase as per requirement (DONE/TODO)
-		builder.WriteString(fmt.Sprintf("## %d. [%s] %s\\n\\n", i+1, strings.ToUpper(step.status), headlineText))
+		builder.WriteString(fmt.Sprintf("## %d. [%s] %s\\n\\n", i+1, strings.ToUpper(step.Status), headlineText))
 
 		// The requirement seems to put the description IN the headline, so let's stick to that.
 
-		if len(step.acceptance) > 0 {
+		if len(step.Acceptance) > 0 {
 			builder.WriteString("Acceptance Criteria:\\n")
-			for j, criterion := range step.acceptance {
+			for j, criterion := range step.Acceptance {
 				builder.WriteString(fmt.Sprintf("%d. %s\\n", j+1, criterion))
 			}
 			builder.WriteString("\\n") // Add a newline after the list
@@ -113,7 +113,7 @@ func (pl *Plan) Inspect() string {
 func (pl *Plan) NextStep() *Step {
 	for _, step := range pl.Steps {
 		// Case-insensitive comparison just in case
-		if strings.ToUpper(step.status) != "DONE" {
+		if strings.ToUpper(step.Status) != "DONE" {
 			return step
 		}
 	}
@@ -122,24 +122,24 @@ func (pl *Plan) NextStep() *Step {
 
 // ID returns the short identifier of the step.
 func (s *Step) ID() string {
-	return s.id
+	return s.Id
 }
 
 // Status returns the current status of the step ("DONE" or "TODO").
 func (s *Step) Status() string {
 	// Ensure status is always returned in uppercase as per requirement.
-	return strings.ToUpper(s.status)
+	return strings.ToUpper(s.Status)
 }
 
 // Description returns the text description of the step.
 func (s *Step) Description() string {
-	return s.description
+	return s.Description
 }
 
 // AcceptanceCriteria returns the list of acceptance criteria for the step.
 func (s *Step) AcceptanceCriteria() []string {
 	// Return a copy to prevent modification of the internal slice? No, requirement is just to return.
-	return s.acceptance
+	return s.Acceptance
 }
 
 // MarkAsCompleted finds a step by its ID and sets its status to "DONE".
@@ -147,8 +147,8 @@ func (s *Step) AcceptanceCriteria() []string {
 func (pl *Plan) MarkAsCompleted(stepID string) error {
 	found := false
 	for _, step := range pl.Steps {
-		if step.id == stepID {
-			step.status = "DONE" // Use uppercase consistent with Status() and Inspect()
+		if step.Id == stepID {
+			step.Status = "DONE" // Use uppercase consistent with Status() and Inspect()
 			found = true
 			break
 		}
@@ -164,8 +164,8 @@ func (pl *Plan) MarkAsCompleted(stepID string) error {
 func (pl *Plan) MarkAsIncomplete(stepID string) error {
 	found := false
 	for _, step := range pl.Steps {
-		if step.id == stepID {
-			step.status = "TODO" // Use uppercase consistent with Status() and Inspect()
+		if step.Id == stepID {
+			step.Status = "TODO" // Use uppercase consistent with Status() and Inspect()
 			found = true
 			break
 		}
@@ -180,10 +180,10 @@ func (pl *Plan) MarkAsIncomplete(stepID string) error {
 // The new step is initialized with status "TODO".
 func (pl *Plan) AddStep(id, description string, acceptanceCriteria []string) {
 	newStep := &Step{
-		id:          id,
-		description: description,
-		status:      "TODO", // Default status for new steps
-		acceptance:  acceptanceCriteria,
+		Id:          id,
+		Description: description,
+		Status:      "TODO", // Default status for new steps
+		Acceptance:  acceptanceCriteria,
 	}
 	pl.Steps = append(pl.Steps, newStep)
 }
