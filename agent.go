@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/dhamidi/smolcode/memory"
 	// Used for string manipulation
 	"strings"
 	"syscall"
@@ -303,7 +304,58 @@ func (agent *Agent) systemPrompt() *genai.Content {
 	return genai.NewContentFromText(agent.systemInstruction, genai.RoleUser)
 }
 
+// buildProject recalls the build command from memory and executes it.
+func (agent *Agent) buildProject() error {
+	agent.geminiMessage("Attempting to build the project...")
+
+	// Initialize a memory manager to get the build command fact
+	mgr, err := memory.New(".smolcode/memory.db") // Using the known path
+	if err != nil {
+		return fmt.Errorf("buildProject: failed to initialize memory manager: %w", err)
+	}
+	defer mgr.Close()
+
+	buildCmdFact, err := mgr.GetMemoryByID("go-build-command")
+	if err != nil {
+		return fmt.Errorf("buildProject: failed to recall build command (factID 'go-build-command'): %w", err)
+	}
+
+	fullBuildCommand := buildCmdFact.Content
+	if strings.TrimSpace(fullBuildCommand) == "" {
+		return fmt.Errorf("buildProject: recalled build command is empty")
+	}
+
+	agent.geminiMessage("Executing build command: %s", fullBuildCommand)
+
+	// The command is a string like "go build -tags fts5 -o smolcode cmd/smolcode/main.go"
+	// We need to split it into command and arguments for exec.Command
+	parts := strings.Fields(fullBuildCommand)
+	if len(parts) == 0 {
+		return fmt.Errorf("buildProject: build command is empty after splitting")
+	}
+	cmdName := parts[0]
+	cmdArgs := parts[1:]
+
+	cmd := exec.Command(cmdName, cmdArgs...)
+	cmd.Stdout = os.Stdout // Pipe build output to agent's stdout
+	cmd.Stderr = os.Stderr // Pipe build errors to agent's stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("buildProject: build failed: %w", err)
+	}
+
+	agent.geminiMessage("Project built successfully.")
+	return nil
+}
+
 func (agent *Agent) reload() error {
+	// First, try to build the project
+	if err := agent.buildProject(); err != nil {
+		// If build fails, return the error and don't proceed with reload
+		return fmt.Errorf("project build failed, aborting reload: %w", err)
+	}
+
+	// If build is successful, proceed with saving state and reloading
 	timestamp := time.Now().Unix()
 	filename := fmt.Sprintf("smolcode-%d.json", timestamp)
 

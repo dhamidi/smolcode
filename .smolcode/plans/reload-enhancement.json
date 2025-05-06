@@ -1,0 +1,36 @@
+{
+  "id": "reload-enhancement",
+  "steps": [
+    {
+      "id": "define-build-function",
+      "description": "Define a new function `buildProject() error` in `agent.go` that recalls the build command from memory and executes it using `os/exec`, returning an error on failure.",
+      "status": "TODO",
+      "acceptance": [
+        "A new function `buildProject() error` exists in `agent.go`.",
+        "The function recalls factID `go-build-command`.",
+        "The function executes the recalled command using `os/exec`.",
+        "The function prints status messages (start, success/failure).",
+        "The function returns an error if the build command fails, nil otherwise."
+      ]
+    },
+    {
+      "id": "update-reload-handler",
+      "description": "Modify the `/reload` command handler in `agent.go` to call `buildProject()` before attempting to replace the agent binary. If building fails, the reload is aborted.",
+      "status": "TODO",
+      "acceptance": [
+        "The `/reload` handler calls `buildProject()`.",
+        "If `buildProject()` returns an error, an error message is sent to the user and the reload does not proceed.",
+        "If `buildProject()` is successful, the existing binary replacement logic is executed."
+      ]
+    },
+    {
+      "id": "compile-and-verify",
+      "description": "Compile `agent.go` and logically verify the changes to the `/reload` command.",
+      "status": "TODO",
+      "acceptance": [
+        "`agent.go` (and the project) compiles successfully.",
+        "A logical review confirms the new `/reload` flow is correct."
+      ]
+    }
+  ]
+}
