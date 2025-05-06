@@ -1,0 +1,16 @@
+{
+  "id": "memory-forget",
+  "steps": [
+    {
+      "id": "add-forget-subcommand",
+      "description": "Add a 'forget' subcommand to the 'memory' command in cmd/smolcode/main.go. This subcommand will take one argument, the ID of the memory to forget, and call the existing mgr.Forget(memID) function.",
+      "status": "TODO",
+      "acceptance": [
+        "A new `forget` case is added to the switch statement in `handleMemoryCommand`.",
+        "The `forget` case parses one command-line argument for the memory ID.",
+        "The `forget` case calls `mgr.Forget(memID)`.",
+        "Success and error messages are printed to the console."
+      ]
+    }
+  ]
+}

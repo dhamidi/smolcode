@@ -319,6 +319,23 @@ func handleMemoryCommand(args []string) {
 			}
 		}
 
+	case "forget":
+		forgetCmd := flag.NewFlagSet("forget", flag.ExitOnError)
+		forgetCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go memory forget <id>\n")
+			fmt.Fprintf(os.Stderr, "Forgets a memory by its ID.\n")
+		}
+		forgetCmd.Parse(remainingArgs)
+		if forgetCmd.NArg() != 1 {
+			forgetCmd.Usage()
+			log.Fatal("Error: 'forget' requires exactly one argument: <id>")
+		}
+		memID := forgetCmd.Arg(0)
+		if err := mgr.Forget(memID); err != nil {
+			log.Fatalf("Error forgetting memory '%s': %v", memID, err)
+		}
+		fmt.Printf("Memory '%s' forgotten successfully.\n", memID)
+
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go memory <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown memory subcommand '%s'", subcommand)
