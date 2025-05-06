@@ -176,6 +176,18 @@ func (pl *Plan) MarkAsIncomplete(stepID string) error {
 	return nil
 }
 
+// AddStep appends a new step to the plan.
+// The new step is initialized with status "TODO".
+func (pl *Plan) AddStep(id, description string, acceptanceCriteria []string) {
+	newStep := &Step{
+		id:          id,
+		description: description,
+		status:      "TODO", // Default status for new steps
+		acceptance:  acceptanceCriteria,
+	}
+	pl.Steps = append(pl.Steps, newStep)
+}
+
 // IsCompleted checks if all steps in the plan are marked as "DONE".
 func (pl *Plan) IsCompleted() bool {
 	return pl.NextStep() == nil // If NextStep is nil, all steps are DONE

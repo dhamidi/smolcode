@@ -2,15 +2,198 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"log"
+	"os"
+	"strings"
 
 	"github.com/dhamidi/smolcode"
+	"github.com/dhamidi/smolcode/planner" // Import the planner package
 )
 
+const planStoragePath = ".smolcode/plans/"
+
 func main() {
+	// Check if the first argument is "plan"
+	if len(os.Args) > 1 && os.Args[1] == "plan" {
+		handlePlanCommand(os.Args[2:])
+		return // Exit after handling plan command
+	}
+
+	// Default behavior (original functionality)
 	var conversationPath string
-	flag.StringVar(&conversationPath, "conversation", "", "Path to a JSON file to initialize the conversation")
-	flag.StringVar(&conversationPath, "c", "", "Path to a JSON file to initialize the conversation (shorthand)")
-	flag.Parse()
+	// Need to use a new flag set for the default command to avoid conflicts
+	// if we later add flags to the 'plan' subcommand.
+	defaultCmd := flag.NewFlagSet("smolcode", flag.ExitOnError)
+	defaultCmd.StringVar(&conversationPath, "conversation", "", "Path to a JSON file to initialize the conversation")
+	defaultCmd.StringVar(&conversationPath, "c", "", "Path to a JSON file to initialize the conversation (shorthand)")
+
+	// Parse flags specifically for the default command
+	// Note: We parse from os.Args[1:] because os.Args[0] is the program name.
+	defaultCmd.Parse(os.Args[1:])
+
+	// Ensure no plan subcommands slipped through if "plan" wasn't the first arg.
+	// This prevents `smolcode -c file.json plan new myplan` from working unexpectedly.
+	if defaultCmd.Arg(0) == "plan" {
+		fmt.Println("Error: 'plan' must be the first argument to use planner subcommands.")
+		fmt.Println("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]")
+		os.Exit(1)
+	}
 
 	smolcode.Code(conversationPath)
+}
+
+// handlePlanCommand processes subcommands for the 'plan' feature.
+func handlePlanCommand(args []string) {
+	plans := planner.New(planStoragePath)
+
+	if len(args) < 1 {
+		log.Println("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]")
+		log.Fatal("Error: No plan subcommand provided.")
+	}
+
+	subcommand := args[0]
+	remainingArgs := args[1:]
+
+	// Use a dedicated flag set for each subcommand to handle potential future flags
+	// and provide better usage messages.
+	switch subcommand {
+	case "new":
+		newCmd := flag.NewFlagSet("new", flag.ExitOnError)
+		newCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan new <plan-name>\n")
+			fmt.Fprintf(os.Stderr, "Creates a new, empty plan file.\n")
+		}
+		newCmd.Parse(remainingArgs)
+		if newCmd.NArg() != 1 {
+			newCmd.Usage()
+			log.Fatal("Error: 'new' requires exactly one argument: <plan-name>")
+		}
+		planName := newCmd.Arg(0)
+		plan := plans.Create(planName)
+		if err := plans.Save(plan); err != nil {
+			log.Fatalf("Error saving new plan '%s': %v", planName, err)
+		}
+		fmt.Printf("Plan '%s' created successfully.\n", planName)
+
+	case "inspect":
+		inspectCmd := flag.NewFlagSet("inspect", flag.ExitOnError)
+		inspectCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan inspect <plan-name>\n")
+			fmt.Fprintf(os.Stderr, "Displays the plan in Markdown format.\n")
+		}
+		inspectCmd.Parse(remainingArgs)
+		if inspectCmd.NArg() != 1 {
+			inspectCmd.Usage()
+			log.Fatal("Error: 'inspect' requires exactly one argument: <plan-name>")
+		}
+		planName := inspectCmd.Arg(0)
+		plan, err := plans.Get(planName)
+		if err != nil {
+			log.Fatalf("Error loading plan '%s': %v", planName, err)
+		}
+		fmt.Println(plan.Inspect())
+
+	case "next-step":
+		nextStepCmd := flag.NewFlagSet("next-step", flag.ExitOnError)
+		nextStepCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan next-step <plan-name>\n")
+			fmt.Fprintf(os.Stderr, "Displays the next incomplete step of the plan.\n")
+		}
+		nextStepCmd.Parse(remainingArgs)
+		if nextStepCmd.NArg() != 1 {
+			nextStepCmd.Usage()
+			log.Fatal("Error: 'next-step' requires exactly one argument: <plan-name>")
+		}
+		planName := nextStepCmd.Arg(0)
+		plan, err := plans.Get(planName)
+		if err != nil {
+			log.Fatalf("Error loading plan '%s': %v", planName, err)
+		}
+		next := plan.NextStep()
+		if next == nil {
+			fmt.Println("Plan is already complete!")
+		} else {
+			fmt.Printf("Next Step (%s):\n", next.ID())
+			fmt.Printf("  Status: %s\n", next.Status())
+			fmt.Printf("  Description: %s\n", next.Description())
+			if len(next.AcceptanceCriteria()) > 0 {
+				fmt.Println("  Acceptance Criteria:")
+				for _, crit := range next.AcceptanceCriteria() {
+					fmt.Printf("    - %s\n", crit)
+				}
+			}
+		}
+
+	case "set":
+		setCmd := flag.NewFlagSet("set", flag.ExitOnError)
+		setCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan set <plan-name> <step-id> <status>\n")
+			fmt.Fprintf(os.Stderr, "Sets the status of a step (DONE or TODO).\n")
+		}
+		setCmd.Parse(remainingArgs)
+		if setCmd.NArg() != 3 {
+			setCmd.Usage()
+			log.Fatal("Error: 'set' requires exactly three arguments: <plan-name> <step-id> <status>")
+		}
+		planName := setCmd.Arg(0)
+		stepID := setCmd.Arg(1)
+		status := strings.ToUpper(setCmd.Arg(2))
+
+		if status != "DONE" && status != "TODO" {
+			setCmd.Usage()
+			log.Fatalf("Error: Invalid status '%s'. Must be DONE or TODO.", setCmd.Arg(2))
+		}
+
+		plan, err := plans.Get(planName)
+		if err != nil {
+			log.Fatalf("Error loading plan '%s': %v", planName, err)
+		}
+
+		if status == "DONE" {
+			err = plan.MarkAsCompleted(stepID)
+		} else {
+			err = plan.MarkAsIncomplete(stepID)
+		}
+		if err != nil {
+			log.Fatalf("Error setting status for step '%s' in plan '%s': %v", stepID, planName, err)
+		}
+
+		if err := plans.Save(plan); err != nil {
+			log.Fatalf("Error saving updated plan '%s': %v", planName, err)
+		}
+		fmt.Printf("Step '%s' in plan '%s' marked as %s.\n", stepID, planName, status)
+
+	case "add-step":
+		addStepCmd := flag.NewFlagSet("add-step", flag.ExitOnError)
+		addStepCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan add-step <plan-name> <step-id> <description> [acceptance-criteria...]\n")
+			fmt.Fprintf(os.Stderr, "Adds a new step to the end of the plan.\n")
+		}
+		addStepCmd.Parse(remainingArgs)
+		if addStepCmd.NArg() < 3 {
+			addStepCmd.Usage()
+			log.Fatal("Error: 'add-step' requires at least three arguments: <plan-name> <step-id> <description>")
+		}
+		planName := addStepCmd.Arg(0)
+		stepID := addStepCmd.Arg(1)
+		description := addStepCmd.Arg(2)
+		acceptanceCriteria := addStepCmd.Args()[3:] // Remaining args are criteria
+
+		plan, err := plans.Get(planName)
+		if err != nil {
+			log.Fatalf("Error loading plan '%s': %v", planName, err)
+		}
+
+		plan.AddStep(stepID, description, acceptanceCriteria)
+
+		if err := plans.Save(plan); err != nil {
+			log.Fatalf("Error saving updated plan '%s': %v", planName, err)
+		}
+		fmt.Printf("Step '%s' added to plan '%s'.\n", stepID, planName)
+
+	default:
+		log.Printf("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]\n")
+		log.Fatalf("Error: Unknown plan subcommand '%s'", subcommand)
+	}
 }
