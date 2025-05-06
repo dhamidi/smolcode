@@ -1,0 +1,1 @@
+It imports custom packages: `github.com/dhamidi/smolcode/memory` and `github.com/dhamidi/smolcode/planner`, and `github.com/dhamidi/smolcode` (for `smolcode.Code`).

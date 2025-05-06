@@ -1,0 +1,1 @@
+`handlePlanCommand` uses a switch statement on `args[0]` (subcommand) to dispatch to specific plan operations.

@@ -1,0 +1,1 @@
+Memory subcommands use `log.Fatal` or `log.Fatalf` for error reporting.

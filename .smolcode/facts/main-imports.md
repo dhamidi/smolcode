@@ -1,0 +1,1 @@
+It imports standard libraries like `flag`, `fmt`, `log`, `os`, `os/exec`, and `strings`.

@@ -1,0 +1,1 @@
+Two constants are defined: `planStoragePath` (".smolcode/plans/") and `memoryDBPath` (".smolcode/memory.db").

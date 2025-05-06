@@ -1,0 +1,1 @@
+Plan subcommands use `log.Fatal` or `log.Fatalf` for error reporting, which exits the program.

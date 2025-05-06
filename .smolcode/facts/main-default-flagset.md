@@ -1,0 +1,1 @@
+The default behavior uses a dedicated `flag.NewFlagSet("smolcode", ...)` for its flags.

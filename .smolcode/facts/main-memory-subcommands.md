@@ -1,0 +1,1 @@
+Memory subcommands include: `add`, `get`, `search`, `forget`, `test`.

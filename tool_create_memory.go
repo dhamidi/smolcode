@@ -2,12 +2,15 @@ package smolcode
 
 import (
 	"fmt"
-	"os"
-	"path/filepath" // Use filepath for OS-independent path joining
+	// "os" // No longer directly needed for file operations
+	// "path/filepath" // No longer directly needed
 	"strings"
 
+	"github.com/dhamidi/smolcode/memory"
 	"google.golang.org/genai"
 )
+
+const memoryDBPath = ".smolcode/memory.db"
 
 var CreateMemoryTool = &ToolDefinition{
 	Tool: &genai.Tool{
@@ -69,28 +72,29 @@ func createMemory(args map[string]any) (map[string]any, error) {
 
 	factsList, ok := factsRaw.([]interface{}) // The genai library decodes JSON arrays as []interface{}
 	if !ok {
-		// Attempt to handle the case where it might be decoded as []map[string]interface{} directly
-		// This depends on the JSON decoder used internally by the genai library/caller
 		altList, altOk := factsRaw.([]map[string]interface{})
 		if !altOk {
 			return nil, fmt.Errorf("create_memory: 'facts' parameter is not a valid list (got %T)", factsRaw)
 		}
-		// Convert []map[string]interface{} to []interface{} for uniform processing
 		factsList = make([]interface{}, len(altList))
 		for i, v := range altList {
 			factsList[i] = v
 		}
 	}
 
-	addedFacts := []string{}
-	updatedFacts := []string{}
-	factsDir := ".smolcode/facts"
-
-	// Ensure the base directory exists
-	err := os.MkdirAll(factsDir, 0755)
+	mgr, err := memory.New(memoryDBPath)
 	if err != nil {
-		return nil, fmt.Errorf("create_memory: failed to create directory %s: %w", factsDir, err)
+		return nil, fmt.Errorf("create_memory: failed to initialize memory manager: %w", err)
 	}
+	defer func() {
+		if closeErr := mgr.Close(); closeErr != nil {
+			// Log this error, but don't overwrite the original error if there was one.
+			// This matches how the CLI's handleMemoryCommand does it.
+			fmt.Printf("Warning: error closing memory database in createMemory tool: %v\n", closeErr)
+		}
+	}()
+
+	processedIDs := []string{}
 
 	for i, factItem := range factsList {
 		factMap, ok := factItem.(map[string]interface{}) // Each item in the list should be a map
@@ -115,33 +119,23 @@ func createMemory(args map[string]any) (map[string]any, error) {
 		if idStr == "" {
 			return nil, fmt.Errorf("create_memory: fact item at index %d has an empty 'id'", i)
 		}
-		if strings.Contains(idStr, "/") || strings.Contains(idStr, `\`) { // Basic check for invalid path chars
-			return nil, fmt.Errorf("create_memory: fact item 'id' ('%s') cannot contain slashes", idStr)
+		// The memory package itself should handle validation of ID format if necessary,
+		// but keeping basic slash check as it's a common path issue from filename-based IDs.
+		if strings.Contains(idStr, "/") || strings.Contains(idStr, `\`) {
+			return nil, fmt.Errorf("create_memory: fact item 'id' ('%s') cannot contain slashes due to legacy reasons, even if the memory manager might allow it. Please use simple IDs.", idStr)
 		}
 
-		// Construct file path using filepath.Join for OS compatibility
-		filePath := filepath.Join(factsDir, idStr+".md")
-
-		// Check if file exists to determine added vs. updated
-		_, err := os.Stat(filePath)
-		fileExists := !os.IsNotExist(err) // If err is nil or *not* IsNotExist, the file exists.
-
-		// Write the fact content to the file
-		err = os.WriteFile(filePath, []byte(factStr), 0644)
-		if err != nil {
-			return nil, fmt.Errorf("create_memory: failed to write fact '%s' to %s: %w", idStr, filePath, err)
+		if err := mgr.AddMemory(idStr, factStr); err != nil {
+			return nil, fmt.Errorf("create_memory: failed to add memory for id '%s': %w", idStr, err)
 		}
-
-		if fileExists {
-			updatedFacts = append(updatedFacts, idStr)
-		} else {
-			addedFacts = append(addedFacts, idStr)
-		}
+		processedIDs = append(processedIDs, idStr)
 	}
 
 	response := map[string]any{
-		"added":   addedFacts,
-		"updated": updatedFacts,
+		"processed_ids": processedIDs,
+		// Since AddMemory is an upsert, distinguishing between "added" and "updated"
+		// is not straightforward without querying before adding, which adds complexity.
+		// A list of processed IDs is simpler and still informative.
 	}
 
 	return response, nil

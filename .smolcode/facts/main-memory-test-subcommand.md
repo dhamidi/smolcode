@@ -1,0 +1,1 @@
+The `memory test` subcommand uses `executeSmolcodeCommand` to call other memory subcommands (`add`, `get`, `forget`) to verify their functionality.

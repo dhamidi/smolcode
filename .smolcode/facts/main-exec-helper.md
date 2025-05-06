@@ -1,0 +1,1 @@
+A helper function `executeSmolcodeCommand(args ...string) (string, error)` exists to run the smolcode CLI itself using `os.Args[0]` and `os/exec`.
