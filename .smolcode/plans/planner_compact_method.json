@@ -37,7 +37,7 @@
     {
       "id": "create_checkpoint_compact",
       "description": "Create a checkpoint with a conventional commit message summarizing the addition of the Compact() method.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Checkpoint created successfully."
       ]

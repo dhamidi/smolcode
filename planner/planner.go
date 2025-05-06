@@ -222,6 +222,37 @@ func (pl *Plan) AddStep(id, description string, acceptanceCriteria []string) {
 	pl.Steps = append(pl.Steps, newStep)
 }
 
+// RemoveSteps removes steps from the plan based on the provided slice of step IDs.
+// It returns the number of steps actually removed.
+// It is not an error if a provided step ID is not found in the plan.
+func (pl *Plan) RemoveSteps(stepIDs []string) int {
+	if len(stepIDs) == 0 {
+		return 0 // Nothing to remove
+	}
+	if len(pl.Steps) == 0 {
+		return 0 // No steps in the plan to remove from
+	}
+
+	// Create a set of IDs to remove for efficient lookup
+	idsToRemove := make(map[string]struct{})
+	for _, id := range stepIDs {
+		idsToRemove[id] = struct{}{}
+	}
+
+	var newSteps []*Step
+	removedCount := 0
+	for _, step := range pl.Steps {
+		if _, found := idsToRemove[step.id]; found {
+			removedCount++
+		} else {
+			newSteps = append(newSteps, step)
+		}
+	}
+
+	pl.Steps = newSteps
+	return removedCount
+}
+
 // IsCompleted checks if all steps in the plan are marked as "DONE".
 func (pl *Plan) IsCompleted() bool {
 	return pl.NextStep() == nil // If NextStep is nil, all steps are DONE
