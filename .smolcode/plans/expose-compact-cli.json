@@ -1,0 +1,25 @@
+{
+  "id": "expose-compact-cli",
+  "steps": [
+    {
+      "id": "modify-main-go",
+      "description": "Modify cmd/smolcode/main.go to add the 'plan compact' subcommand.",
+      "status": "DONE",
+      "acceptance": [
+        "'plan compact' subcommand is defined.",
+        "Planner's Compact method is called.",
+        "Success message is printed."
+      ]
+    },
+    {
+      "id": "build-test-compact",
+      "description": "Build the project and test the 'smolcode plan compact' command.",
+      "status": "DONE",
+      "acceptance": [
+        "Project builds successfully.",
+        "Running 'smolcode plan compact' executes the compaction logic.",
+        "Completed plans are removed (if any)."
+      ]
+    }
+  ]
+}

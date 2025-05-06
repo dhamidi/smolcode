@@ -267,6 +267,23 @@ func handlePlanCommand(args []string) {
 		}
 		fmt.Printf("Steps in plan '%s' reordered successfully.\n", planName)
 
+	case "compact":
+		compactCmd := flag.NewFlagSet("compact", flag.ExitOnError)
+		compactCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan compact\n")
+			fmt.Fprintf(os.Stderr, "Removes all completed plans from storage.\n")
+		}
+		compactCmd.Parse(remainingArgs)
+		if compactCmd.NArg() != 0 {
+			compactCmd.Usage()
+			log.Fatal("Error: 'compact' does not take any arguments")
+		}
+
+		if err := plans.Compact(); err != nil {
+			log.Fatalf("Error compacting plans: %v", err)
+		}
+		fmt.Println("Plans compacted successfully. Completed plans have been removed.")
+
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown plan subcommand '%s'", subcommand)
