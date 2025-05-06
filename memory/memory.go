@@ -37,6 +37,19 @@ func New(dbPath string) (*MemoryManager, error) {
 		return nil, fmt.Errorf("failed to open database at %s: %w", dbPath, err)
 	}
 
+	if err := initializeSchema(db); err != nil {
+		db.Close() // Ensure db is closed if schema initialization fails
+		// The error from initializeSchema is already specific, so we can return it directly or wrap it.
+		// Wrapping it provides context that initialization failed within New().
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+
+	return &MemoryManager{
+		db: db,
+	}, nil
+}
+
+func initializeSchema(db *sql.DB) error {
 	// Create memories table if it doesn't exist.
 	// Using TEXT for ID as it's a string, and TEXT for Content.
 	// ROWID is automatically an alias for the primary key in SQLite if not specified otherwise.
@@ -86,15 +99,12 @@ func New(dbPath string) (*MemoryManager, error) {
 	END;
 	`
 
-	_, err = db.Exec(initSQL)
+	_, err := db.Exec(initSQL)
 	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to initialize database schema: %w", err)
+		// No need to db.Close() here as the caller (New) will do it.
+		return fmt.Errorf("failed to execute schema initialization SQL: %w", err)
 	}
-
-	return &MemoryManager{
-		db: db,
-	}, nil
+	return nil
 }
 
 // Close closes the database connection.

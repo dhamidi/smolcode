@@ -15,7 +15,7 @@
     {
       "id": "refactor-new-extract-schema",
       "description": "Extract SQL schema initialization from memory.New() into a separate unexported function initializeSchema(db *sql.DB) error.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "initializeSchema function exists in memory/memory.go and contains the SQL DDL and db.Exec call.",
         "memory.New() calls initializeSchema.",
