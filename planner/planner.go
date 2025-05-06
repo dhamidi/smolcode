@@ -22,10 +22,10 @@ type Plan struct {
 
 // Step represents a single task in a plan.
 type Step struct {
-	id          string   `json:"id"`          // Short identifier, e.g., "add-tests"
-	description string   `json:"description"` // Text description of the step
-	status      string   `json:"status"`      // "DONE" or "TODO"
-	acceptance  []string `json:"acceptance"`  // List of acceptance criteria
+	id          string   `json:"id"` // Short identifier, e.g., "add-tests"
+	description string   `json:"description"`
+	status      string   `json:"status"`     // "DONE" or "TODO"
+	acceptance  []string `json:"acceptance"` // List of acceptance criteria
 }
 
 // New creates a new Planner instance.
