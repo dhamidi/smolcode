@@ -1,0 +1,24 @@
+{
+  "id": "hardcode-build-command",
+  "steps": [
+    {
+      "id": "modify-buildproject-hardcode",
+      "description": "Modify `agent.buildProject` in `agent.go` to use a hardcoded build command string instead of recalling it from memory. Remove related memory manager calls and potentially the memory package import if no longer needed in this file.",
+      "status": "TODO",
+      "acceptance": [
+        "The `buildProject` function in `agent.go` no longer initializes `memory.New` or calls `mgr.GetMemoryByID`.",
+        "The `fullBuildCommand` variable in `buildProject` is assigned the hardcoded string `go build -tags fts5 -o smolcode cmd/smolcode/main.go`.",
+        "The `github.com/dhamidi/smolcode/memory` import is removed from `agent.go` if it was solely used by the previous `buildProject` logic."
+      ]
+    },
+    {
+      "id": "build-verify-hardcode",
+      "description": "Build the project to verify the changes and logically confirm the updated behavior.",
+      "status": "TODO",
+      "acceptance": [
+        "The project builds successfully using `go build -tags fts5 -o smolcode cmd/smolcode/main.go`.",
+        "A logical review confirms the `/reload` command's build step now uses the hardcoded command."
+      ]
+    }
+  ]
+}
