@@ -1,0 +1,71 @@
+{
+  "id": "memory-improvements",
+  "steps": [
+    {
+      "id": "refactor-new-extract-schema",
+      "description": "Extract SQL schema initialization from memory.New() into a separate unexported function initializeSchema(db *sql.DB) error.",
+      "status": "TODO",
+      "acceptance": [
+        "initializeSchema function exists in memory/memory.go and contains the SQL DDL and db.Exec call.",
+        "memory.New() calls initializeSchema.",
+        "memory.New() function is noticeably shorter.",
+        "Existing tests for memory creation/initialization pass."
+      ]
+    },
+    {
+      "id": "refactor-new-sql-file",
+      "description": "(Optional Enhancement) Move the SQL schema string from initializeSchema into a separate memory/schema.sql file and read it in the function.",
+      "status": "TODO",
+      "acceptance": [
+        "memory/schema.sql file contains the schema DDL.",
+        "initializeSchema reads its content from this file.",
+        "Existing tests pass."
+      ]
+    },
+    {
+      "id": "refactor-searchmemory-helpers",
+      "description": "Break down memory.SearchMemory() into two unexported helper functions: getDocIDsFromFTS and getMemoriesByDocIDs.",
+      "status": "TODO",
+      "acceptance": [
+        "getDocIDsFromFTS(db *sql.DB, query string) ([]int64, error) exists in memory/memory.go and works.",
+        "getMemoriesByDocIDs(db *sql.DB, docIDs []int64) ([]*memory.Memory, error) exists in memory/memory.go and works.",
+        "memory.SearchMemory() calls these two helper functions.",
+        "memory.SearchMemory() function is noticeably shorter.",
+        "Existing tests for memory search pass."
+      ]
+    },
+    {
+      "id": "refactor-creatememory-helper",
+      "description": "Extract single fact processing logic from tool_create_memory.createMemory() into an unexported helper function processFactItem.",
+      "status": "TODO",
+      "acceptance": [
+        "processFactItem function exists in tool_create_memory.go and handles a single fact's processing.",
+        "tool_create_memory.createMemory() iterates and calls processFactItem.",
+        "tool_create_memory.createMemory() function is noticeably shorter.",
+        "Existing tests for create_memory tool pass."
+      ]
+    },
+    {
+      "id": "refactor-recallmemory-helpers",
+      "description": "Extract 'recall by ID' and 'recall by search' logic from tool_recall_memory.recallMemory() into helper functions recallByID and recallBySearch.",
+      "status": "TODO",
+      "acceptance": [
+        "recallByID helper function exists in tool_recall_memory.go and works.",
+        "recallBySearch helper function exists in tool_recall_memory.go and works.",
+        "tool_recall_memory.recallMemory() calls these helper functions.",
+        "tool_recall_memory.recallMemory() function is noticeably shorter.",
+        "Existing tests for recall_memory tool pass."
+      ]
+    },
+    {
+      "id": "improve-recallmemory-errorcheck",
+      "description": "Change the sql.ErrNoRows check in tool_recall_memory.go (recallByID or recallMemory) to use errors.Is(err, sql.ErrNoRows).",
+      "status": "TODO",
+      "acceptance": [
+        "The check for a 'not found' error uses errors.Is(err, sql.ErrNoRows).",
+        "errors package is imported in tool_recall_memory.go.",
+        "Existing tests for recalling a non-existent fact ID pass and return the expected error."
+      ]
+    }
+  ]
+}

@@ -237,7 +237,7 @@ func handlePlanCommand(args []string) {
 		} else {
 			fmt.Println("Available plans:")
 			for _, name := range planNames {
-				fmt.Printf("- %s\n", name)
+				fmt.Printf("- %s (%s, %d/%d tasks)\n", name.Name, name.Status, name.CompletedTasks, name.TotalTasks)
 			}
 		}
 

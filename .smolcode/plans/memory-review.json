@@ -1,0 +1,37 @@
+{
+  "id": "memory-review",
+  "steps": [
+    {
+      "id": "review-memory-package",
+      "description": "Review the memory package against code review guidelines.",
+      "status": "DONE",
+      "acceptance": [
+        "Identify areas for improvement in the memory package."
+      ]
+    },
+    {
+      "id": "review-memory-tools",
+      "description": "Review memory-related tools against code review guidelines.",
+      "status": "DONE",
+      "acceptance": [
+        "Identify areas for improvement in memory-related tools."
+      ]
+    },
+    {
+      "id": "propose-changes",
+      "description": "Propose changes to address identified issues.",
+      "status": "DONE",
+      "acceptance": [
+        "Create a list of specific, actionable changes."
+      ]
+    },
+    {
+      "id": "present-plan",
+      "description": "Present the plan for addressing issues to the user.",
+      "status": "TODO",
+      "acceptance": [
+        "User acknowledges the plan."
+      ]
+    }
+  ]
+}
