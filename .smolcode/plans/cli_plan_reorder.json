@@ -48,7 +48,7 @@
     {
       "id": "create_checkpoint_cli_reorder",
       "description": "Create a checkpoint.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Checkpoint created for the new CLI command."
       ]

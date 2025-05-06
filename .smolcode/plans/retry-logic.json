@@ -1,0 +1,32 @@
+{
+  "id": "retry-logic",
+  "steps": [
+    {
+      "id": "implement-retry-logic",
+      "description": "Implement retry logic in runInference function.",
+      "status": "DONE",
+      "acceptance": [
+        "runInference includes a retry loop for API calls.",
+        "Retry attempts are capped at 5.",
+        "Exponential backoff delays are 5s, 10s, 15s, 30s."
+      ]
+    },
+    {
+      "id": "remove-old-retry",
+      "description": "Remove existing retry logic from the Run function.",
+      "status": "DONE",
+      "acceptance": [
+        "The section in Run handling \"An internal error has occurred\" is removed."
+      ]
+    },
+    {
+      "id": "test-changes",
+      "description": "Test the changes to ensure the new retry logic works as expected and the old logic is gone.",
+      "status": "DONE",
+      "acceptance": [
+        "Manually inspect the code to confirm changes.",
+        "If possible, simulate an API error to test retry mechanism (though this might be hard without modifying the API client itself)."
+      ]
+    }
+  ]
+}

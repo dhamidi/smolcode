@@ -147,39 +147,8 @@ func (agent *Agent) Run(ctx context.Context) error {
 
 		response, err := agent.runInference(ctx, agent.history)
 		if err != nil {
-			// Check for the specific internal error potentially caused by rate limiting
-			if strings.Contains(err.Error(), "An internal error has occurred") {
-				fmt.Fprintf(os.Stderr, "Encountered potential rate limit error: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Saving conversation to smolcode.json and pausing for 60 seconds...\n")
-
-				// Save conversation history
-				historyJSON, marshalErr := json.MarshalIndent(agent.history, "", "  ")
-				if marshalErr != nil {
-					// Log error saving history, but attempt to continue
-					fmt.Fprintf(os.Stderr, "Error marshalling conversation history during rate limit handling: %v\n", marshalErr)
-				} else {
-					writeErr := os.WriteFile("smolcode.json", historyJSON, 0644)
-					if writeErr != nil {
-						fmt.Fprintf(os.Stderr, "Error writing conversation file smolcode.json during rate limit handling: %v\n", writeErr)
-					} else {
-						fmt.Println("Conversation history saved to smolcode.json.")
-					}
-				}
-
-				// Pause execution
-				for i := 0; i < 60; i += 5 {
-					time.Sleep(5 * time.Second)
-					fmt.Printf(".")
-				}
-				fmt.Printf("\n")
-
-				// Continue the loop to allow user interaction again
-				readUserInput = true // Ensure we prompt the user next iteration
-				continue             // Skip the rest of this iteration and start the next
-			} else {
-				// For any other error, return it to terminate the agent run
-				return err
-			}
+			// For any other error, return it to terminate the agent run
+			return err
 		}
 
 		// Print usage metadata summary
@@ -285,14 +254,53 @@ func (agent *Agent) trace(direction string, arg any) {
 
 func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Content) (*genai.GenerateContentResponse, error) {
 	agent.trace(">", conversation)
-	response, err := agent.client.Models.GenerateContent(ctx, "gemini-2.5-pro-preview-03-25", conversation, &genai.GenerateContentConfig{
-		MaxOutputTokens:   4 * 1024,
-		Tools:             []*genai.Tool{agent.tools.List()},
-		SystemInstruction: agent.systemPrompt(),
-	})
 
-	agent.trace("<", response)
-	return response, err
+	var response *genai.GenerateContentResponse
+	var err error
+
+	retryDelays := []time.Duration{5 * time.Second, 10 * time.Second, 15 * time.Second, 30 * time.Second}
+	maxRetries := 5
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		response, err = agent.client.Models.GenerateContent(ctx, "gemini-2.5-pro-preview-03-25", conversation, &genai.GenerateContentConfig{
+			MaxOutputTokens:   4 * 1024,
+			Tools:             []*genai.Tool{agent.tools.List()},
+			SystemInstruction: agent.systemPrompt(),
+		})
+
+		if err == nil {
+			agent.trace("<", response)
+			return response, nil // Success
+		}
+
+		// Check if the error is a 500 error or similar that might benefit from a retry
+		// This is a basic check; you might want to make it more specific
+		if strings.Contains(err.Error(), "An internal error has occurred") || strings.Contains(err.Error(), "server error") {
+			fmt.Fprintf(os.Stderr, "Attempt %d/%d: Encountered API error: %v\n", attempt+1, maxRetries, err)
+			if attempt < len(retryDelays) {
+				delay := retryDelays[attempt]
+				fmt.Fprintf(os.Stderr, "Retrying in %s...\n", delay)
+				time.Sleep(delay)
+			} else if attempt < maxRetries-1 {
+				// If we've exhausted specific delays but not max retries, use the last delay value
+				delay := retryDelays[len(retryDelays)-1]
+				fmt.Fprintf(os.Stderr, "Retrying in %s...\n", delay)
+				time.Sleep(delay)
+			} else {
+				// Last attempt failed
+				fmt.Fprintf(os.Stderr, "All %d retry attempts failed.\n", maxRetries)
+				break
+			}
+		} else {
+			// Non-retryable error
+			agent.trace("<", response) // Trace the error response if any
+			return response, err
+		}
+	}
+
+	// If all retries fail, return the last error
+	agent.trace("<", response) // Trace the final error response if any
+	return response, fmt.Errorf("after %d attempts, last error: %w", maxRetries, err)
 }
 
 func (agent *Agent) systemPrompt() *genai.Content {
