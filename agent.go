@@ -17,7 +17,7 @@ import (
 	"google.golang.org/genai"
 )
 
-func Code(conversationFilename string) {
+func Code(conversationFilename string, modelName string) {
 	initialHistory := LoadConversationFromFile(conversationFilename)
 
 	// Check if the conversation file is a temporary reload file and remove it after loading
@@ -69,6 +69,9 @@ func Code(conversationFilename string) {
 	}
 
 	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistory, "main")
+	if modelName != "" {
+		agent.ChooseModel(modelName)
+	}
 	if err := agent.Run(ctx); err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
@@ -85,7 +88,8 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		tracingEnabled:    false,
 		systemInstruction: systemInstruction,
 		history:           initialHistory,
-		name:              name, // Set the name field
+		name:              name,
+		modelName:         "gemini-2.5-pro-preview-03-25",
 	}
 }
 
@@ -97,6 +101,12 @@ type Agent struct {
 	tracingEnabled    bool
 	systemInstruction string
 	history           []*genai.Content
+	modelName         string
+}
+
+func (agent *Agent) ChooseModel(modelName string) *Agent {
+	agent.modelName = modelName
+	return agent
 }
 
 func (agent *Agent) EnableTracing() *Agent {
@@ -113,7 +123,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 	if agent.history == nil {
 		agent.history = []*genai.Content{}
 	}
-	fmt.Println("Chat with Gemini (use 'Ctrl-c' to quit)")
+	fmt.Printf("Chat with %s (use 'Ctrl-c' to quit)\n", agent.modelName)
 	fmt.Printf("Available tools: %s\n", strings.Join(agent.tools.Names(), ", "))
 	readUserInput := true
 	for {

@@ -49,6 +49,10 @@ func main() {
 	defaultCmd.StringVar(&conversationPath, "conversation", "", "Path to a JSON file to initialize the conversation")
 	defaultCmd.StringVar(&conversationPath, "c", "", "Path to a JSON file to initialize the conversation (shorthand)")
 
+	var modelName string
+	defaultCmd.StringVar(&modelName, "model", "", "The name of the model to use")
+	defaultCmd.StringVar(&modelName, "m", "", "The name of the model to use")
+
 	// Parse flags specifically for the default command
 	// Note: We parse from os.Args[1:] because os.Args[0] is the program name.
 	defaultCmd.Parse(os.Args[1:])
@@ -61,7 +65,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	smolcode.Code(conversationPath)
+	smolcode.Code(conversationPath, modelName)
 }
 
 // handlePlanCommand processes subcommands for the 'plan' feature.
