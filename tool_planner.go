@@ -60,6 +60,8 @@ Plans are stored in '.smolcode/plans/'. Always specify the plan name.
 								"add_steps",     // Add one or more new steps to the end of the plan, creating it if necessary
 								"is_completed",  // Check if all steps in the plan are DONE.
 								"list_plans",    // List all available plan names.
+								"remove_steps",  // Remove specified steps from a plan.
+								"compact_plans", // Remove all completed plan files. The plan_name argument will be ignored for this action.
 							},
 							Description: "The operation to perform on the plan.",
 						},
@@ -77,6 +79,13 @@ Plans are stored in '.smolcode/plans/'. Always specify the plan name.
 							Type:        genai.TypeArray,
 							Items:       plannerStepSchema,
 							Description: "A list of step objects to add to the plan (required for 'add_steps'), creating it if necessary.",
+						},
+						"step_ids_to_remove": {
+							Type: genai.TypeArray,
+							Items: &genai.Schema{
+								Type: genai.TypeString,
+							},
+							Description: "A list of step IDs to remove from the plan (required for 'remove_steps').",
 						},
 					},
 					Required: []string{"plan_name", "action"},
@@ -237,6 +246,51 @@ func managePlan(args map[string]any) (map[string]any, error) {
 		}
 		// The planner.PlanInfo struct has json tags, so it will be marshalled correctly.
 		return map[string]any{"plans": plansInfo}, nil
+
+	case "remove_steps":
+		stepIDsToRemoveArg, ok := args["step_ids_to_remove"].([]any)
+		if !ok {
+			// Enforce it must be present, can be empty, as per schema for array types.
+			return nil, fmt.Errorf("manage_plan: 'remove_steps' requires 'step_ids_to_remove' array argument")
+		}
+
+		var stepIDs []string
+		for i, idArg := range stepIDsToRemoveArg {
+			idStr, ok := idArg.(string)
+			if !ok || idStr == "" {
+				return nil, fmt.Errorf("manage_plan: invalid or empty step ID in 'step_ids_to_remove' at index %d", i)
+			}
+			stepIDs = append(stepIDs, idStr)
+		}
+
+		plan, err := plans.Get(plannerName)
+		if err != nil {
+			return nil, fmt.Errorf("manage_plan: failed to get plan '%s' for removing steps: %w", plannerName, err)
+		}
+
+		removedCount := plan.RemoveSteps(stepIDs) // This is the call to the method added in planner.go
+
+		if err := plans.Save(plan); err != nil {
+			return nil, fmt.Errorf("manage_plan: failed to save plan '%s' after removing steps: %w", plannerName, err)
+		}
+		return map[string]any{
+			"result":        fmt.Sprintf("Removed %d step(s) from plan '%s'.", removedCount, plannerName),
+			"removed_count": removedCount,
+			"plan_name":     plannerName,
+		}, nil
+
+	case "compact_plans":
+		// plannerName is ignored for this action, as compaction is global.
+		// The planner instance 'plans' is already initialized.
+		err := plans.Compact() // This is the call to the method added in planner.go
+		if err != nil {
+			// The Compact method in planner.go logs warnings for individual file errors
+			// but returns an error if the directory read fails.
+			return nil, fmt.Errorf("manage_plan: 'compact_plans' action encountered an error: %w", err)
+		}
+		return map[string]any{
+			"result": "Plan compaction process completed. Check server logs for details on individual plan loading/removal warnings.",
+		}, nil
 
 	default:
 		return nil, fmt.Errorf("manage_plan: unknown action '%s'", action)

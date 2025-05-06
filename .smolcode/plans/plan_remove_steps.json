@@ -40,7 +40,7 @@
     {
       "id": "create_checkpoint_remove_steps",
       "description": "Create a checkpoint with a conventional commit message.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Checkpoint created successfully."
       ]
