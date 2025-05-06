@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/dhamidi/smolcode/memory" // Import the memory package
@@ -347,8 +348,72 @@ func handleMemoryCommand(args []string) {
 			testCmd.Usage()
 			log.Fatal("Error: 'test' does not take any arguments")
 		}
-		fmt.Println("Memory test subcommand called. Implementation pending.")
-		// TODO: Implement test logic here in a subsequent step.
+		fmt.Println("Starting memory test...")
+		testMemID := "test-mem-cli"
+		testMemContent := "hello from cli test"
+		executablePath := os.Args[0] // Path to the currently running executable
+
+		// 1. Add memory
+		fmt.Printf("Attempting to add memory: ID='%s', Content='%s'\n", testMemID, testMemContent)
+		addArgs := []string{"memory", "add", testMemID, testMemContent}
+		cmdAdd := exec.Command(executablePath, addArgs...)
+		cmdAdd.Stdout = os.Stdout
+		cmdAdd.Stderr = os.Stderr
+		if err := cmdAdd.Run(); err != nil {
+			log.Fatalf("Failed to add memory: %v", err)
+		}
+		fmt.Println("Memory added successfully.")
+
+		// 2. Get memory and verify
+		fmt.Printf("Attempting to get memory: ID='%s'\n", testMemID)
+		getArgs := []string{"memory", "get", testMemID}
+		cmdGet := exec.Command(executablePath, getArgs...)
+		getOutput, err := cmdGet.CombinedOutput()
+		if err != nil {
+			log.Fatalf("Failed to get memory: %v. Output: %s", err, string(getOutput))
+		}
+		expectedOutput := fmt.Sprintf("ID: %s\nContent: %s\n", testMemID, testMemContent)
+		if !strings.Contains(string(getOutput), expectedOutput) {
+			log.Fatalf("Get memory output mismatch. Expected to contain:\n%s\nGot:\n%s", expectedOutput, string(getOutput))
+		}
+		fmt.Println("Memory retrieved and verified successfully.")
+
+		// 3. Forget memory
+		fmt.Printf("Attempting to forget memory: ID='%s'\n", testMemID)
+		forgetArgs := []string{"memory", "forget", testMemID}
+		cmdForget := exec.Command(executablePath, forgetArgs...)
+		cmdForget.Stdout = os.Stdout
+		cmdForget.Stderr = os.Stderr
+		if err := cmdForget.Run(); err != nil {
+			log.Fatalf("Failed to forget memory: %v", err)
+		}
+		fmt.Println("Memory forgotten successfully.")
+
+		// 4. Get memory again and verify it's not found
+		fmt.Printf("Attempting to get memory again (should fail): ID='%s'\n", testMemID)
+		cmdGetAgain := exec.Command(executablePath, getArgs...) // Use same getArgs
+		getAgainOutput, err := cmdGetAgain.CombinedOutput()
+
+		// We expect an error here, as the memory should not be found.
+		// The GetMemoryByID function logs to Fatalf if the memory is not found, causing os.Exit(1)
+		// So, if err is nil, it's an issue. If err is an ExitError, it's expected.
+		if err == nil {
+			log.Fatalf("Expected an error when trying to get a forgotten memory, but got none. Output: %s", string(getAgainOutput))
+		}
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// This is expected. We can check the exit code or stderr if needed.
+			// Example: if exitErr.ExitCode() != 1 { log.Fatalf("Expected exit code 1, got %d", exitErr.ExitCode()) }
+			// For now, just check if stderr contains "not found"
+			if !strings.Contains(string(getAgainOutput), fmt.Sprintf("memory with id '%s' not found", testMemID)) &&
+				!strings.Contains(string(getAgainOutput), fmt.Sprintf("Error retrieving memory '%s'", testMemID)) { // error message from log.Fatalf
+				log.Fatalf("Expected 'not found' message for forgotten memory, but got: %s", string(getAgainOutput))
+			}
+		} else {
+			// Some other unexpected error
+			log.Fatalf("Unexpected error when trying to get forgotten memory: %v. Output: %s", err, string(getAgainOutput))
+		}
+		fmt.Println("Memory confirmed not found after forgetting.")
+		fmt.Println("Memory test completed successfully!")
 
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go memory <subcommand> [arguments]\n")
