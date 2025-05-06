@@ -11,6 +11,38 @@
         "The results from `planner.List()` are returned in the tool output.",
         "The tool definition (`available_tools`) is updated to reflect the new action if necessary."
       ]
+    },
+    {
+      "id": "planner-list-status",
+      "description": "Modify the planner.List() method (or create a new planner.ListWithStatus() method) to fetch and return the completion status (DONE/TODO) along with each plan name. This involves iterating through plan files, loading each plan, and calling its IsCompleted() method.",
+      "status": "DONE",
+      "acceptance": [
+        "The planner package has a method that returns a list of plan names and their corresponding completion status (e.g., a slice of structs or a map).",
+        "The method correctly determines the status for each plan by loading it and checking IsCompleted().",
+        "Errors during plan loading or status checking are handled appropriately."
+      ]
+    },
+    {
+      "id": "tool-list-status-response",
+      "description": "Update the 'list_plans' action handler in 'tool_planner.go' to use the new planner method that includes plan statuses. Modify the tool's response structure to include both the plan name and its status.",
+      "status": "DONE",
+      "acceptance": [
+        "The 'list_plans' action in 'tool_planner.go' calls the planner method that returns plan names and statuses.",
+        "The tool response for 'list_plans' is a list of objects, each containing 'name' and 'status' for a plan.",
+        "The tool continues to handle errors from the planner package correctly."
+      ]
+    },
+    {
+      "id": "planner-list-status",
+      "description": "Modify the planner.List() method to return detailed information for each plan. This includes the plan name, its overall status (DONE/TODO), the total number of tasks, and the number of completed tasks. A new struct (e.g., PlanInfo) should be defined to hold this information.",
+      "status": "TODO",
+      "acceptance": [
+        "A new struct (e.g., PlanInfo) is defined in the planner package to hold plan name, status, total tasks, and completed tasks.",
+        "The planner.List() method is modified to return a slice of these PlanInfo structs ([]PlanInfo).",
+        "For each plan, planner.List() correctly populates the PlanInfo struct: name is the filename without extension; status is 'DONE' if all tasks are completed, 'TODO' otherwise; total_tasks is the count of all steps; completed_tasks is the count of steps marked 'DONE'.",
+        "The method correctly loads each plan to calculate these details.",
+        "Errors during plan loading or processing are handled and returned appropriately."
+      ]
     }
   ]
 }

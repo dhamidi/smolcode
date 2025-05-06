@@ -231,11 +231,12 @@ func managePlan(args map[string]any) (map[string]any, error) {
 		return map[string]any{"is_completed": isCompleted}, nil
 
 	case "list_plans":
-		planNames, err := plans.List()
+		plansInfo, err := plans.List() // planner.List() now returns []planner.PlanInfo
 		if err != nil {
 			return nil, fmt.Errorf("manage_plan: failed to list plans: %w", err)
 		}
-		return map[string]any{"plan_names": planNames}, nil
+		// The planner.PlanInfo struct has json tags, so it will be marshalled correctly.
+		return map[string]any{"plans": plansInfo}, nil
 
 	default:
 		return nil, fmt.Errorf("manage_plan: unknown action '%s'", action)

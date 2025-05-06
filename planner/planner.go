@@ -20,6 +20,15 @@ type Plan struct {
 	name  string  // internal name of the plan, typically the filename without extension
 }
 
+// PlanInfo holds summary information about a plan.
+// This is used by the List method.
+type PlanInfo struct {
+	Name           string `json:"name"`
+	Status         string `json:"status"` // "DONE" or "TODO"
+	TotalTasks     int    `json:"total_tasks"`
+	CompletedTasks int    `json:"completed_tasks"`
+}
+
 // serializablePlan is an internal struct used for JSON marshaling/unmarshaling.
 // It has exported fields corresponding to the Plan struct.
 type serializablePlan struct {
@@ -218,21 +227,49 @@ func (pl *Plan) IsCompleted() bool {
 	return pl.NextStep() == nil // If NextStep is nil, all steps are DONE
 }
 
-// List returns the names of all plans in the storage directory.
-func (p *Planner) List() ([]string, error) {
+// List returns summary information for all plans in the storage directory.
+func (p *Planner) List() ([]PlanInfo, error) {
 	files, err := os.ReadDir(p.storageDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read plan storage directory %s: %w", p.storageDir, err)
 	}
 
-	var planNames []string
+	var plansInfo []PlanInfo
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
-			name := strings.TrimSuffix(file.Name(), ".json")
-			planNames = append(planNames, name)
+			planName := strings.TrimSuffix(file.Name(), ".json")
+
+			plan, err := p.Get(planName) // Load the plan to get its details
+			if err != nil {
+				// Log the error and skip this plan, or return immediately?
+				// For now, let's log and continue, so a single corrupted plan doesn't break the whole list.
+				// Consider making this behavior configurable or returning partial results + an error list.
+				fmt.Fprintf(os.Stderr, "warning: failed to load plan '%s' for listing: %v\n", planName, err)
+				continue
+			}
+
+			totalTasks := len(plan.Steps)
+			completedTasks := 0
+			for _, step := range plan.Steps {
+				if strings.ToUpper(step.status) == "DONE" {
+					completedTasks++
+				}
+			}
+
+			status := "TODO"
+			if plan.IsCompleted() {
+				status = "DONE"
+			}
+
+			plansInfo = append(plansInfo, PlanInfo{
+				Name:           planName,
+				Status:         status,
+				TotalTasks:     totalTasks,
+				CompletedTasks: completedTasks,
+			})
 		}
 	}
-	return planNames, nil
+	return plansInfo, nil
 }
 
 // Save writes the given plan to a JSON file in the planner's storage directory.
