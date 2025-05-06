@@ -1,1 +1,1 @@
-To build the smolcode application with FTS5 support for SQLite, use the command: `go build -tags sqlite_fts5 -o smolcode cmd/smolcode/main.go`.
+To build the smolcode application with FTS5 support for SQLite, use the command: `go build -tags fts5 -o smolcode cmd/smolcode/main.go`. The tag `sqlite_fts5` is incorrect.
