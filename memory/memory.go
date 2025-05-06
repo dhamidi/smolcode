@@ -37,30 +37,13 @@ func New(dbPath string) (*MemoryManager, error) {
 	// Create memories table if it doesn't exist.
 	// Using TEXT for ID as it's a string, and TEXT for Content.
 	// ROWID is automatically an alias for the primary key in SQLite if not specified otherwise.
-	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS memories (
-		id TEXT PRIMARY KEY,
-		content TEXT NOT NULL
-	);
-	`
-	_, err = db.Exec(createTableSQL)
-	if err != nil {
-		db.Close() // Close the DB if table creation fails
-		return nil, fmt.Errorf("failed to create memories table: %w", err)
-	}
+
+	// The main table creation, FTS table, and triggers are handled by initSQL below.
 
 	// Create FTS5 virtual table for full-text search if it doesn't exist.
 	// It will use the 'content' column from the 'memories' table.
 	// We use 'content=' to specify which column of the external content table to use.
 	// Using 'id' as the column name for the document ID in the FTS table, mapping to 'id' from 'memories'.
-	createFTSTableSQL := `
-	CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-		id, -- Corresponds to the id column in the memories table
-		content, -- The column to be indexed for full-text search
-		content='memories', -- Specifies the external content table
-		content_rowid='id' -- Specifies which column in 'memories' acts as the rowid for FTS updates (must be PRIMARY KEY)
-	);
-	`
 	// Note: For fts5 with external content, the content_rowid must map to the *actual* rowid or an INTEGER PRIMARY KEY of the external table.
 	// Since our `id` is TEXT PRIMARY KEY, this setup is more complex. A common pattern is to have an explicit INTEGER PRIMARY KEY in the main table.
 	// Let's adjust 'memories' to have an explicit integer primary key for FTS linkage, and 'id' as a unique text identifier.
@@ -157,34 +140,82 @@ func (m *MemoryManager) GetMemoryByID(id string) (*Memory, error) {
 // SearchMemory performs a full-text search on the content of memories.
 // It returns a slice of matching Memory structs.
 func (m *MemoryManager) SearchMemory(query string) ([]*Memory, error) {
-	// Query the FTS table and join with the memories table to get the original id and content.
-	// The FTS table (memories_fts) stores rowid which corresponds to docid in the memories table.
-	searchSQL := `
-	SELECT m.id, m.content
-	FROM memories AS m
-	JOIN memories_fts AS fts ON m.docid = fts.rowid
+	// Step 1: Get matching docids from FTS table
+	ftsQuerySQL := `
+	SELECT fts.rowid -- This is the docid
+	FROM memories_fts AS fts
 	WHERE fts.memories_fts MATCH ?
-	ORDER BY rank; -- rank is an auxiliary function of FTS5, orders by relevance
+	ORDER BY rank;
 	`
-
-	rows, err := m.db.Query(searchSQL, query)
+	rows, err := m.db.Query(ftsQuerySQL, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute search query '%s': %w", query, err)
+		return nil, fmt.Errorf("failed to execute FTS query for docids: %w", err)
 	}
-	defer rows.Close()
+	// It's important to close rows from the first query before the loop for the second query starts,
+	// especially if not all rows are consumed by Next(). However, Scan consumes them.
+	// defer rows.Close() // Standard defer is fine if loop completes or errors out.
 
-	var memories []*Memory
+	var docIDs []int64
 	for rows.Next() {
+		var docID int64
+		if err := rows.Scan(&docID); err != nil {
+			rows.Close() // Close explicitly on error before returning
+			return nil, fmt.Errorf("failed to scan docID from FTS results: %w", err)
+		}
+		docIDs = append(docIDs, docID)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close() // Close explicitly on error
+		return nil, fmt.Errorf("error iterating FTS docID results: %w", err)
+	}
+	rows.Close() // Ensure rows are closed after successful iteration
+
+	if len(docIDs) == 0 {
+		return []*Memory{}, nil // No matches
+	}
+
+	// Step 2: Retrieve full memory objects for each docID
+	var memories []*Memory
+
+	stmtSQL := `SELECT id, content FROM memories WHERE docid = ?;`
+	stmt, err := m.db.Prepare(stmtSQL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement to get memory by docid: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, docID := range docIDs {
 		mem := &Memory{}
-		if err := rows.Scan(&mem.ID, &mem.Content); err != nil {
-			return nil, fmt.Errorf("failed to scan search result: %w", err)
+		err := stmt.QueryRow(docID).Scan(&mem.ID, &mem.Content)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// This would be strange if FTS returned a docID that doesn't exist, implies data inconsistency
+				return nil, fmt.Errorf("FTS returned docID %d but no matching memory found (data inconsistency?): %w", docID, err)
+			}
+			return nil, fmt.Errorf("failed to retrieve memory for docID %d: %w", docID, err)
 		}
 		memories = append(memories, mem)
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating search results: %w", err)
+	return memories, nil
+}
+
+// Forget removes a memory by its user-defined ID.
+func (m *MemoryManager) Forget(id string) error {
+	deleteSQL := `DELETE FROM memories WHERE id = ?;`
+	result, err := m.db.Exec(deleteSQL, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete memory with id %s: %w", id, err)
 	}
 
-	return memories, nil
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		// This error is less critical but good to log if it happens.
+		// We won't fail the operation just because we can't get RowsAffected.
+		fmt.Printf("Warning: could not get rows affected after deleting memory %s: %v\n", id, err)
+	} else if rowsAffected == 0 {
+		return fmt.Errorf("memory with id '%s' not found, nothing to forget", id) // Consider sql.ErrNoRows or a custom error
+	}
+
+	return nil
 }
