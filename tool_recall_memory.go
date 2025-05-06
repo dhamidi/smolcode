@@ -1,14 +1,19 @@
 package smolcode
 
 import (
+	"database/sql" // For sql.ErrNoRows
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
+
+	// "os"
+	// "os/exec"
+	// "path/filepath"
 	"strings"
 
+	"github.com/dhamidi/smolcode/memory"
 	"google.golang.org/genai"
 )
+
+// const memoryDBPath = ".smolcode/memory.db" // This is already defined in tool_create_memory.go in the same package
 
 var RecallMemoryTool = &ToolDefinition{
 	Tool: &genai.Tool{
@@ -47,7 +52,6 @@ When searching, prefer to search with single words and narrow down as needed.
 }
 
 func recallMemory(args map[string]any) (map[string]any, error) {
-	factsDir := ".smolcode/facts"
 	var about, factID string
 
 	if aboutRaw, ok := args["about"]; ok {
@@ -57,137 +61,61 @@ func recallMemory(args map[string]any) (map[string]any, error) {
 		factID, _ = factIDRaw.(string)
 	}
 
-	// Validation: factID takes precedence. At least one must be non-empty.
+	mgr, err := memory.New(memoryDBPath)
+	if err != nil {
+		return nil, fmt.Errorf("recall_memory: failed to initialize memory manager: %w", err)
+	}
+	defer func() {
+		if closeErr := mgr.Close(); closeErr != nil {
+			fmt.Printf("Warning: error closing memory database in recallMemory tool: %v\n", closeErr)
+		}
+	}()
+
 	if factID != "" {
 		// Recall by specific ID
-		if strings.Contains(factID, "/") || strings.Contains(factID, `\`) {
-			return nil, fmt.Errorf("recall_memory: factID '%s' cannot contain slashes", factID)
-		}
-		filePath := filepath.Join(factsDir, factID+".md")
-		content, err := os.ReadFile(filePath)
+		// Slash check is less critical here as DB will handle ID format, but kept for consistency with create_memory error message if desired.
+		// However, the memory.GetMemoryByID doesn't have such restrictions internally on format of ID string itself other than what DB imposes.
+		// For now, removing the slash check here as the DB lookup is the source of truth.
+		mem, err := mgr.GetMemoryByID(factID)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if err.Error() == sql.ErrNoRows.Error() || strings.Contains(err.Error(), "not found") { // memory.GetMemoryByID wraps sql.ErrNoRows
 				return nil, fmt.Errorf("recall_memory: fact with ID '%s' not found", factID)
 			}
-			return nil, fmt.Errorf("recall_memory: error reading fact '%s': %w", factID, err)
+			return nil, fmt.Errorf("recall_memory: error retrieving fact '%s': %w", factID, err)
 		}
 		return map[string]any{
-			"id":   factID,
-			"fact": string(content),
+			"id":   mem.ID,
+			"fact": mem.Content,
 		}, nil
 	} else if about != "" {
-		// Recall by search term using ripgrep (rg)
-		words := strings.Fields(about)
-		if len(words) == 0 {
+		// Recall by search term using MemoryManager.SearchMemory
+		if strings.TrimSpace(about) == "" {
 			return nil, fmt.Errorf("recall_memory: 'about' parameter cannot be empty or only whitespace")
 		}
 
-		// Use a map to store file paths found for the *first* word,
-		// and then use it to track the intersection for subsequent words.
-		// map[string]struct{} acts like a set.
-		intersectingFiles := make(map[string]struct{})
+		mems, err := mgr.SearchMemory(about)
+		if err != nil {
+			return nil, fmt.Errorf("recall_memory: error searching for facts about '%s': %w", about, err)
+		}
 
-		for i, word := range words {
-			cmd := exec.Command("rg", "--files-with-matches", "--smart-case", "--fixed-strings", word, factsDir)
-			output, err := cmd.Output()
+		if len(mems) == 0 {
+			return nil, fmt.Errorf("recall_memory: no facts found containing all words in '%s'", about)
+		}
 
-			if err != nil {
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					if exitErr.ExitCode() == 1 {
-						// If any word is not found, the intersection is empty.
-						return nil, fmt.Errorf("recall_memory: no facts found containing the word '%s' (and thus not all words in '%s')", word, about)
-					}
-					stderr := string(exitErr.Stderr)
-					return nil, fmt.Errorf("recall_memory: rg command failed for word '%s': %w. Stderr: %s", word, err, stderr)
-				}
-				return nil, fmt.Errorf("recall_memory: failed to execute rg command for word '%s': %w", word, err)
-			}
-
-			outputStr := strings.TrimSpace(string(output))
-			if outputStr == "" { // Should be caught by exit code 1, but double check
-				return nil, fmt.Errorf("recall_memory: no facts found containing the word '%s' (and thus not all words in '%s')", word, about)
-			}
-
-			currentWordFiles := make(map[string]struct{})
-			filePaths := strings.Split(outputStr, "\n")
-			for _, filePath := range filePaths {
-				cleanedPath := strings.TrimSpace(filePath)
-				if cleanedPath != "" {
-					currentWordFiles[cleanedPath] = struct{}{}
-				}
-			}
-
-			if i == 0 {
-				// For the first word, initialize the intersection set
-				intersectingFiles = currentWordFiles
-			} else {
-				// For subsequent words, compute the intersection
-				nextIntersection := make(map[string]struct{})
-				for path := range intersectingFiles {
-					if _, exists := currentWordFiles[path]; exists {
-						nextIntersection[path] = struct{}{}
-					}
-				}
-				intersectingFiles = nextIntersection
-			}
-
-			// If intersection becomes empty, no need to check further words
-			if len(intersectingFiles) == 0 {
-				return nil, fmt.Errorf("recall_memory: no facts found containing all words in '%s'", about)
+		// Convert []*memory.Memory to []map[string]string for the tool response
+		matches := make([]map[string]string, len(mems))
+		for i, mem := range mems {
+			matches[i] = map[string]string{
+				"id":   mem.ID,
+				"fact": mem.Content,
 			}
 		}
 
-		// Process all files in the final intersection
-		maxResults := 20
-		var matches []map[string]string
-		var remainingIDs []string
-		processedCount := 0 // Keep track of how many we add to matches
-
-		for filePath := range intersectingFiles {
-			if filePath == "" { // Should not happen after cleaning, but safeguard
-				continue
-			}
-
-			fileName := filepath.Base(filePath)
-			extractedID := strings.TrimSuffix(fileName, ".md")
-
-			if processedCount < maxResults {
-				content, err := os.ReadFile(filePath) // Use the path from the intersection map
-				if err != nil {
-					if os.IsNotExist(err) {
-						fmt.Fprintf(os.Stderr, "recall_memory: warning: intersecting file disappeared before reading: %s\n", filePath)
-						continue // Skip this file
-					}
-					return nil, fmt.Errorf("recall_memory: error reading intersecting fact file '%s': %w", filePath, err)
-				}
-				matches = append(matches, map[string]string{
-					"id":   extractedID,
-					"fact": string(content),
-				})
-				processedCount++
-			} else {
-				remainingIDs = append(remainingIDs, extractedID)
-			}
-		}
-
-		// Check if any valid matches were actually processed after intersection
-		if len(matches) == 0 {
-			// This can happen if files disappear or if the intersection was truly empty
-			// (though the earlier check should catch empty intersection).
-			return nil, fmt.Errorf("recall_memory: no accessible facts found containing all words in '%s'", about)
-		}
-
-		result := map[string]any{
+		return map[string]any{
 			"matches": matches,
-		}
-		if len(remainingIDs) > 0 {
-			result["remaining_ids"] = remainingIDs
-		}
-
-		return result, nil
+		}, nil
 
 	} else {
-		// Neither factID nor about was provided
 		return nil, fmt.Errorf("recall_memory: either 'factID' or 'about' parameter must be provided")
 	}
 }
