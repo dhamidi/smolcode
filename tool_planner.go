@@ -54,11 +54,10 @@ Plans are stored in '.smolcode/plans/'. Always specify the plan name.
 						"action": {
 							Type: genai.TypeString,
 							Enum: []string{
-								"create",        // Create a new plan file (does not add steps).
 								"inspect",       // Get the Markdown representation of the plan.
 								"get_next_step", // Get details of the next incomplete step.
 								"set_status",    // Mark a specific step as DONE or TODO.
-								"add_steps",     // Add one or more new steps to the end of the plan.
+								"add_steps",     // Add one or more new steps to the end of the plan, creating it if necessary
 								"is_completed",  // Check if all steps in the plan are DONE.
 							},
 							Description: "The operation to perform on the plan.",
@@ -76,7 +75,7 @@ Plans are stored in '.smolcode/plans/'. Always specify the plan name.
 						"steps_to_add": {
 							Type:        genai.TypeArray,
 							Items:       plannerStepSchema,
-							Description: "A list of step objects to add to the plan (required for 'add_steps').",
+							Description: "A list of step objects to add to the plan (required for 'add_steps'), creating it if necessary.",
 						},
 					},
 					Required: []string{"plan_name", "action"},
