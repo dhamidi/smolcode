@@ -1,6 +1,8 @@
 package memory
 
 import (
+	_ "embed"
+
 	"database/sql"
 	"errors"
 	"fmt"
