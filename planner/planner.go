@@ -253,6 +253,53 @@ func (pl *Plan) RemoveSteps(stepIDs []string) int {
 	return removedCount
 }
 
+// Reorder rearranges the steps in the plan.
+// Steps whose IDs are in newStepOrder are placed first, in the specified order.
+// Any remaining steps from the original plan are appended afterwards,
+// maintaining their original relative order.
+// If a step ID in newStepOrder does not exist in the plan, it is ignored.
+// Duplicate step IDs in newStepOrder are also effectively ignored after the first placement.
+func (pl *Plan) Reorder(newStepOrder []string) {
+	if len(pl.Steps) == 0 {
+		return // Nothing to reorder
+	}
+
+	originalStepsMap := make(map[string]*Step, len(pl.Steps))
+	for _, step := range pl.Steps {
+		originalStepsMap[step.id] = step
+	}
+
+	var reorderedSteps []*Step
+	// Keep track of steps that have been explicitly placed by newStepOrder
+	// to correctly append remaining steps and handle potential duplicates in newStepOrder.
+	placedStepIDs := make(map[string]struct{})
+
+	// First, place steps according to newStepOrder
+	for _, stepID := range newStepOrder {
+		step, exists := originalStepsMap[stepID]
+		if !exists {
+			continue // Step ID from newStepOrder not found in plan, ignore.
+		}
+		if _, alreadyPlaced := placedStepIDs[stepID]; alreadyPlaced {
+			continue // Step ID was already placed (e.g., duplicate in newStepOrder), ignore.
+		}
+		reorderedSteps = append(reorderedSteps, step)
+		placedStepIDs[stepID] = struct{}{}
+	}
+
+	// Then, append any remaining steps from the original order
+	// that were not part of newStepOrder (or were duplicates and thus not re-added).
+	for _, originalStep := range pl.Steps {
+		if _, wasPlaced := placedStepIDs[originalStep.id]; !wasPlaced {
+			reorderedSteps = append(reorderedSteps, originalStep)
+			// Mark as placed here too, though less critical as we iterate originalSteps once.
+			placedStepIDs[originalStep.id] = struct{}{}
+		}
+	}
+
+	pl.Steps = reorderedSteps
+}
+
 // IsCompleted checks if all steps in the plan are marked as "DONE".
 func (pl *Plan) IsCompleted() bool {
 	return pl.NextStep() == nil // If NextStep is nil, all steps are DONE
