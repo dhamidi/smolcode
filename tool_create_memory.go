@@ -19,9 +19,8 @@ var CreateMemoryTool = &ToolDefinition{
 				Name: "create_memory",
 				Description: strings.TrimSpace(
 					`
-Stores facts in the knowledge base.
-
-Each fact is written to '.smolcode/facts/<fact-id>.md'. Existing facts are overwritten.
+Stores facts in the knowledge base using the memory manager.
+Facts are stored in a database and can be overwritten if an ID already exists.
 
 Use this when you are asked to memorize or remember something.
 

@@ -22,10 +22,10 @@ var RecallMemoryTool = &ToolDefinition{
 				Name: "recall_memory",
 				Description: strings.TrimSpace(
 					`
-Recalls facts from the knowledge base.
+Recalls facts from the knowledge base using the memory manager.
 
 Either provide a specific 'factID' to retrieve a single fact, 
-or provide an 'about' search term to find a relevant fact.
+or provide an 'about' search term to find relevant facts using full-text search.
 
 When searching, prefer to search with single words and narrow down as needed.
 `,
@@ -35,7 +35,7 @@ When searching, prefer to search with single words and narrow down as needed.
 					Properties: map[string]*genai.Schema{
 						"about": {
 							Type:        genai.TypeString,
-							Description: "A search term to find relevant facts in .smolcode/facts - this is searched verbatim",
+							Description: "A search term to find relevant facts using the memory manager's full-text search.",
 						},
 						"factID": {
 							Type:        genai.TypeString,
