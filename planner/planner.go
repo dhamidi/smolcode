@@ -24,8 +24,8 @@ type Plan struct {
 type Step struct {
 	id          string   `json:"id"` // Short identifier, e.g., "add-tests"
 	description string   `json:"description"`
-	status      string   `json:"status"`     // "DONE" or "TODO"
-	acceptance  []string `json:"acceptance"` // List of acceptance criteria
+	status      string   `json:"status"` // "DONE" or "TODO"
+	acceptance  []string `json:"acceptance"`
 }
 
 // New creates a new Planner instance.
