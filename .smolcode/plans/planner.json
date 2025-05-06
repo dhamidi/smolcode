@@ -1,6 +1,13 @@
 {
   "id": "planner",
   "steps": [
-    {}
+    {
+      "id": "review-logging",
+      "description": "Remove all logging from the planner – instead, the CLI or other client code handles logging",
+      "status": "DONE",
+      "acceptance": [
+        "The planner package does not log anything"
+      ]
+    }
   ]
 }

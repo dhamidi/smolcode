@@ -45,7 +45,10 @@ func main() {
 
 // handlePlanCommand processes subcommands for the 'plan' feature.
 func handlePlanCommand(args []string) {
-	plans := planner.New(planStoragePath)
+	plans, err := planner.New(planStoragePath)
+	if err != nil {
+		log.Fatalf("Error initializing planner: %v", err)
+	}
 
 	if len(args) < 1 {
 		log.Println("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]")

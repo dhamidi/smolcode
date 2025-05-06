@@ -46,17 +46,15 @@ type serializableStep struct {
 
 // New creates a new Planner instance.
 // It ensures the storage directory exists.
-func New(storageDir string) *Planner {
+// Returns an error if the directory cannot be created.
+func New(storageDir string) (*Planner, error) {
 	// Ensure the storage directory exists. os.MkdirAll is idempotent.
 	if err := os.MkdirAll(storageDir, 0755); err != nil {
-		// If the storage directory cannot be created, this is a critical setup error.
-		// For now, we'll print the error. In a real application, this might panic
-		// or be handled by returning an error from New, requiring a signature change.
-		fmt.Printf("Warning: failed to create storage directory '%s': %s\n", storageDir, err)
+		return nil, fmt.Errorf("failed to create storage directory %s: %w", storageDir, err)
 	}
 	return &Planner{
 		storageDir: storageDir,
-	}
+	}, nil
 }
 
 // Create initializes a new Plan in memory with the given name.
