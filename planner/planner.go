@@ -15,8 +15,8 @@ type Planner struct {
 
 // Plan represents a collection of steps.
 type Plan struct {
-	ID    string  `json:"id"`    // Unique identifier for the plan, e.g., "active"
-	Steps []*Step `json:"steps"` // List of steps in the plan
+	ID    string  `json:"id"` // Unique identifier for the plan, e.g., "active"
+	Steps []*Step `json:"steps"`
 	name  string  // internal name of the plan, typically the filename without extension
 }
 
