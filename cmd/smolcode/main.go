@@ -284,6 +284,32 @@ func handlePlanCommand(args []string) {
 		}
 		fmt.Println("Plans compacted successfully. Completed plans have been removed.")
 
+	case "remove":
+		removeCmd := flag.NewFlagSet("remove", flag.ExitOnError)
+		removeCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan remove <plan-name-1> [plan-name-2 ...]\n")
+			fmt.Fprintf(os.Stderr, "Removes one or more specified plans from storage.\n")
+		}
+		removeCmd.Parse(remainingArgs)
+		if removeCmd.NArg() == 0 {
+			removeCmd.Usage()
+			log.Fatal("Error: 'remove' requires at least one <plan-name> argument")
+		}
+		planNamesToRemove := removeCmd.Args()
+		results := plans.Remove(planNamesToRemove)
+		for name, err := range results {
+			if err == nil {
+				fmt.Printf("Plan '%s' removed successfully.\n", name)
+			} else {
+				// Check if the error is because the file does not exist
+				if os.IsNotExist(err) {
+					fmt.Printf("Plan '%s' not found.\n", name)
+				} else {
+					fmt.Printf("Failed to remove plan '%s': %v\n", name, err)
+				}
+			}
+		}
+
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown plan subcommand '%s'", subcommand)

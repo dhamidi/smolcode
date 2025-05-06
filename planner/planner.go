@@ -386,6 +386,20 @@ func (p *Planner) Save(plan *Plan) error {
 	return nil
 }
 
+// Remove attempts to delete plans by their names.
+// It returns a map where keys are plan names and values are errors (nil on success).
+func (p *Planner) Remove(planNames []string) map[string]error {
+	results := make(map[string]error)
+	for _, name := range planNames {
+		planPath := filepath.Join(p.storageDir, fmt.Sprintf("%s.json", name))
+		err := os.Remove(planPath)
+		// If os.Remove returns an error, it could be because the file doesn't exist (os.ErrNotExist)
+		// or due to other issues like permissions. We store the error as is.
+		results[name] = err
+	}
+	return results
+}
+
 // Compact removes all completed plans from the storage directory.
 // A plan is considered completed if all its steps are marked as "DONE".
 func (p *Planner) Compact() error {

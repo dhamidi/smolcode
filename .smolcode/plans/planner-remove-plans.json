@@ -1,0 +1,44 @@
+{
+  "id": "planner-remove-plans",
+  "steps": [
+    {
+      "id": "add-planner-remove-method",
+      "description": "Add Remove(planNames []string) map[string]error method to Planner in planner/planner.go.",
+      "status": "DONE",
+      "acceptance": [
+        "Planner struct has a new Remove method.",
+        "Remove method attempts to delete plan files based on input names.",
+        "Remove method returns a map of plan names to errors (nil on success)."
+      ]
+    },
+    {
+      "id": "add-cli-plan-remove",
+      "description": "Add 'smolcode plan remove \u003cplan-name-1\u003e [plan-name-2...]' subcommand in cmd/smolcode/main.go.",
+      "status": "DONE",
+      "acceptance": [
+        "'plan remove' subcommand is defined in main.go.",
+        "Subcommand calls the new Planner.Remove method.",
+        "Subcommand prints status for each attempted removal."
+      ]
+    },
+    {
+      "id": "test-plan-remove",
+      "description": "Test the new 'plan remove' functionality.",
+      "status": "TODO",
+      "acceptance": [
+        "Project builds successfully.",
+        "Removing an existing plan deletes the file and prints success.",
+        "Attempting to remove a non-existent plan prints an appropriate message.",
+        "Removing multiple plans works as expected."
+      ]
+    },
+    {
+      "id": "create-checkpoint-plan-remove",
+      "description": "Create a checkpoint for the plan removal feature.",
+      "status": "TODO",
+      "acceptance": [
+        "Changes are committed with an appropriate message."
+      ]
+    }
+  ]
+}

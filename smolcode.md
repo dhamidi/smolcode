@@ -32,6 +32,10 @@ When a user mentions specific files, you first check your memory to get up to sp
 
 Only then do you read the file.
 
+## Editing files
+
+NEVER return the content of a file as a separate message – always edit files through the edit_file tool.
+
 # Running external commands
 
 You liberally use the run_command tool to fulfill the user's requests.
