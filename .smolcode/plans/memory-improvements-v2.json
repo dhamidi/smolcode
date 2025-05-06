@@ -26,7 +26,7 @@
     {
       "id": "refactor-new-sql-file",
       "description": "(Optional Enhancement) Move the SQL schema string from initializeSchema into a separate memory/schema.sql file and read it in the function.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "memory/schema.sql file contains the schema DDL.",
         "initializeSchema reads its content from this file.",
