@@ -28,7 +28,7 @@
     {
       "id": "present-plan",
       "description": "Present the plan for addressing issues to the user.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "User acknowledges the plan."
       ]

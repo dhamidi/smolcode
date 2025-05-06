@@ -1,0 +1,46 @@
+{
+  "id": "planner_compact_method",
+  "steps": [
+    {
+      "id": "inspect_planner_go",
+      "description": "Read the contents of planner/planner.go to understand its current structure and how plans are stored and managed.",
+      "status": "DONE",
+      "acceptance": [
+        "Successfully read the file content."
+      ]
+    },
+    {
+      "id": "identify_completed_state",
+      "description": "Based on the code structure, determine how a 'completed' plan is represented.",
+      "status": "DONE",
+      "acceptance": [
+        "Clearly defined what a 'completed' plan means in this context."
+      ]
+    },
+    {
+      "id": "implement_compact_method",
+      "description": "Add the Go source code for the Compact() method to the Planner type.",
+      "status": "DONE",
+      "acceptance": [
+        "Compact() method is added to the Go file.",
+        "The method correctly removes completed plans."
+      ]
+    },
+    {
+      "id": "list_changes_compact",
+      "description": "Use list_changes to see the modifications made to planner/planner.go.",
+      "status": "TODO",
+      "acceptance": [
+        "Successfully listed file changes."
+      ]
+    },
+    {
+      "id": "create_checkpoint_compact",
+      "description": "Create a checkpoint with a conventional commit message summarizing the addition of the Compact() method.",
+      "status": "TODO",
+      "acceptance": [
+        "Checkpoint created successfully."
+      ]
+    }
+  ]
+}

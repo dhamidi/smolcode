@@ -193,6 +193,44 @@ func (pl *Plan) MarkAsCompleted(stepID string) error {
 	return nil
 }
 
+// Compact removes all completed plans from the storage directory.
+// A plan is considered completed if all its steps are marked as "DONE".
+func (p *Planner) Compact() error {
+	files, err := os.ReadDir(p.storageDir)
+	if err != nil {
+		return fmt.Errorf("failed to read plan storage directory %s for compacting: %w", p.storageDir, err)
+	}
+
+	var compactedCount int // To keep track of how many plans are removed.
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			planName := strings.TrimSuffix(file.Name(), ".json")
+			plan, err := p.Get(planName) // Use existing Get method to load plan details
+			if err != nil {
+				// Log error and continue, so a single corrupted/unreadable plan doesn't stop compaction.
+				fmt.Fprintf(os.Stderr, "warning: failed to load plan '%s' during compact: %v\n", planName, err)
+				continue
+			}
+
+			if plan.IsCompleted() { // Use existing IsCompleted method
+				planPath := filepath.Join(p.storageDir, file.Name())
+				if err := os.Remove(planPath); err != nil {
+					// Log error and continue. Perhaps the file was removed by another process or permissions issue.
+					fmt.Fprintf(os.Stderr, "warning: failed to remove completed plan file '%s': %v\n", planPath, err)
+					continue
+				}
+				compactedCount++
+				// Optional: Log successful removal for verbosity if desired.
+				// fmt.Printf("Compacted (removed) completed plan: %s\n", planName)
+			}
+		}
+	}
+
+	// Optional: Log overall result for verbosity if desired.
+	// fmt.Printf("Compaction complete. Removed %d completed plan(s).\n", compactedCount)
+	return nil
+}
+
 // MarkAsIncomplete finds a step by its ID and sets its status to "TODO".
 // Returns an error if the step ID is not found.
 func (pl *Plan) MarkAsIncomplete(stepID string) error {
@@ -207,6 +245,44 @@ func (pl *Plan) MarkAsIncomplete(stepID string) error {
 	if !found {
 		return fmt.Errorf("step with ID '%s' not found in plan '%s'", stepID, pl.ID)
 	}
+	return nil
+}
+
+// Compact removes all completed plans from the storage directory.
+// A plan is considered completed if all its steps are marked as "DONE".
+func (p *Planner) Compact() error {
+	files, err := os.ReadDir(p.storageDir)
+	if err != nil {
+		return fmt.Errorf("failed to read plan storage directory %s for compacting: %w", p.storageDir, err)
+	}
+
+	var compactedCount int // To keep track of how many plans are removed.
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			planName := strings.TrimSuffix(file.Name(), ".json")
+			plan, err := p.Get(planName) // Use existing Get method to load plan details
+			if err != nil {
+				// Log error and continue, so a single corrupted/unreadable plan doesn't stop compaction.
+				fmt.Fprintf(os.Stderr, "warning: failed to load plan '%s' during compact: %v\n", planName, err)
+				continue
+			}
+
+			if plan.IsCompleted() { // Use existing IsCompleted method
+				planPath := filepath.Join(p.storageDir, file.Name())
+				if err := os.Remove(planPath); err != nil {
+					// Log error and continue. Perhaps the file was removed by another process or permissions issue.
+					fmt.Fprintf(os.Stderr, "warning: failed to remove completed plan file '%s': %v\n", planPath, err)
+					continue
+				}
+				compactedCount++
+				// Optional: Log successful removal for verbosity if desired.
+				// fmt.Printf("Compacted (removed) completed plan: %s\n", planName)
+			}
+		}
+	}
+
+	// Optional: Log overall result for verbosity if desired.
+	// fmt.Printf("Compaction complete. Removed %d completed plan(s).\n", compactedCount)
 	return nil
 }
 
@@ -305,5 +381,43 @@ func (p *Planner) Save(plan *Plan) error {
 		return fmt.Errorf("failed to write plan file %s: %w", planPath, err)
 	}
 
+	return nil
+}
+
+// Compact removes all completed plans from the storage directory.
+// A plan is considered completed if all its steps are marked as "DONE".
+func (p *Planner) Compact() error {
+	files, err := os.ReadDir(p.storageDir)
+	if err != nil {
+		return fmt.Errorf("failed to read plan storage directory %s for compacting: %w", p.storageDir, err)
+	}
+
+	var compactedCount int // To keep track of how many plans are removed.
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			planName := strings.TrimSuffix(file.Name(), ".json")
+			plan, err := p.Get(planName) // Use existing Get method to load plan details
+			if err != nil {
+				// Log error and continue, so a single corrupted/unreadable plan doesn't stop compaction.
+				fmt.Fprintf(os.Stderr, "warning: failed to load plan '%s' during compact: %v\n", planName, err)
+				continue
+			}
+
+			if plan.IsCompleted() { // Use existing IsCompleted method
+				planPath := filepath.Join(p.storageDir, file.Name())
+				if err := os.Remove(planPath); err != nil {
+					// Log error and continue. Perhaps the file was removed by another process or permissions issue.
+					fmt.Fprintf(os.Stderr, "warning: failed to remove completed plan file '%s': %v\n", planPath, err)
+					continue
+				}
+				compactedCount++
+				// Optional: Log successful removal for verbosity if desired.
+				// fmt.Printf("Compacted (removed) completed plan: %s\n", planName)
+			}
+		}
+	}
+
+	// Optional: Log overall result for verbosity if desired.
+	// fmt.Printf("Compaction complete. Removed %d completed plan(s).\n", compactedCount)
 	return nil
 }
