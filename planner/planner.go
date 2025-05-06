@@ -76,9 +76,6 @@ func (pl *Plan) Inspect() string {
 		// Status is uppercase as per requirement (DONE/TODO)
 		builder.WriteString(fmt.Sprintf("## %d. [%s] %s\\n\\n", i+1, strings.ToUpper(step.status), headlineText))
 
-		// if step.description != "" {
-		//  builder.WriteString(step.description + "\\n\\n")
-		// }
 		// The requirement seems to put the description IN the headline, so let's stick to that.
 
 		// Acceptance criteria numbered list
