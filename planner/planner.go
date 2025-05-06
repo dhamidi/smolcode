@@ -29,8 +29,15 @@ type Step struct {
 }
 
 // New creates a new Planner instance.
+// It ensures the storage directory exists.
 func New(storageDir string) *Planner {
-	// TODO: Consider validating the storageDir path or creating it if it doesn't exist.
+	// Ensure the storage directory exists. os.MkdirAll is idempotent.
+	if err := os.MkdirAll(storageDir, 0755); err != nil {
+		// If the storage directory cannot be created, this is a critical setup error.
+		// For now, we'll print the error. In a real application, this might panic
+		// or be handled by returning an error from New, requiring a signature change.
+		fmt.Printf("Warning: failed to create storage directory '%s': %s\n", storageDir, err)
+	}
 	return &Planner{
 		storageDir: storageDir,
 	}
@@ -172,11 +179,6 @@ func (p *Planner) Save(plan *Plan) error {
 		return fmt.Errorf("plan has no name, cannot determine save path")
 	}
 	planPath := filepath.Join(p.storageDir, fmt.Sprintf("%s.json", plan.name))
-
-	// Ensure the storage directory exists. os.MkdirAll is idempotent.
-	if err := os.MkdirAll(p.storageDir, 0755); err != nil {
-		return fmt.Errorf("failed to create storage directory %s: %w", p.storageDir, err)
-	}
 
 	data, err := json.MarshalIndent(plan, "", "  ") // Use MarshalIndent for readability
 	if err != nil {
