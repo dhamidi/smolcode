@@ -59,6 +59,7 @@ Plans are stored in '.smolcode/plans/'. Always specify the plan name.
 								"set_status",    // Mark a specific step as DONE or TODO.
 								"add_steps",     // Add one or more new steps to the end of the plan, creating it if necessary
 								"is_completed",  // Check if all steps in the plan are DONE.
+								"list_plans",    // List all available plan names.
 							},
 							Description: "The operation to perform on the plan.",
 						},
@@ -228,6 +229,13 @@ func managePlan(args map[string]any) (map[string]any, error) {
 		}
 		isCompleted := plan.IsCompleted()
 		return map[string]any{"is_completed": isCompleted}, nil
+
+	case "list_plans":
+		planNames, err := plans.List()
+		if err != nil {
+			return nil, fmt.Errorf("manage_plan: failed to list plans: %w", err)
+		}
+		return map[string]any{"plan_names": planNames}, nil
 
 	default:
 		return nil, fmt.Errorf("manage_plan: unknown action '%s'", action)

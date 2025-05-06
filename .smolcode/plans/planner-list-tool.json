@@ -1,0 +1,16 @@
+{
+  "id": "planner-list-tool",
+  "steps": [
+    {
+      "id": "expose-list-tool",
+      "description": "Expose the planner's List functionality as a new 'list_plans' action in the existing `manage_plan` tool in `tool_planner.go`. This will involve modifying the `ManagePlanAction` enum (or equivalent) and updating the main switch statement in the tool's implementation to handle the new action.",
+      "status": "DONE",
+      "acceptance": [
+        "`tool_planner.go` has a new `list_plans` case in its main tool logic.",
+        "The `list_plans` action calls the `planner.List()` method.",
+        "The results from `planner.List()` are returned in the tool output.",
+        "The tool definition (`available_tools`) is updated to reflect the new action if necessary."
+      ]
+    }
+  ]
+}

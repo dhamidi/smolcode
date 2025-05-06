@@ -15,7 +15,7 @@
     {
       "id": "add-cli-list-subcommand",
       "description": "Add a `list` subcommand to the `plan` command in `cmd/smolcode/main.go`. This subcommand will call the new `planner.List` method and print the results.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`cmd/smolcode/main.go` handles a `plan list` subcommand.",
         "The subcommand calls `planner.List()`.",
