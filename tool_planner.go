@@ -62,6 +62,7 @@ Plans are stored in '.smolcode/plans/'. Always specify the plan name.
 								"list_plans",    // List all available plan names.
 								"remove_steps",  // Remove specified steps from a plan.
 								"compact_plans", // Remove all completed plan files. The plan_name argument will be ignored for this action.
+								"reorder_steps", // Reorder steps within a plan according to a given list of step IDs.
 							},
 							Description: "The operation to perform on the plan.",
 						},
@@ -86,6 +87,13 @@ Plans are stored in '.smolcode/plans/'. Always specify the plan name.
 								Type: genai.TypeString,
 							},
 							Description: "A list of step IDs to remove from the plan (required for 'remove_steps').",
+						},
+						"new_step_order": {
+							Type: genai.TypeArray,
+							Items: &genai.Schema{
+								Type: genai.TypeString,
+							},
+							Description: "A list of step IDs representing the desired new order (required for 'reorder_steps'). Steps not in this list are appended at the end.",
 						},
 					},
 					Required: []string{"plan_name", "action"},
@@ -290,6 +298,39 @@ func managePlan(args map[string]any) (map[string]any, error) {
 		}
 		return map[string]any{
 			"result": "Plan compaction process completed. Check server logs for details on individual plan loading/removal warnings.",
+		}, nil
+
+	case "reorder_steps":
+		newStepOrderArg, ok := args["new_step_order"].([]any)
+		if !ok {
+			// new_step_order is effectively required by this action.
+			return nil, fmt.Errorf("manage_plan: 'reorder_steps' requires 'new_step_order' array argument")
+		}
+
+		var newStepOrder []string
+		for i, idArg := range newStepOrderArg {
+			idStr, ok := idArg.(string)
+			if !ok { // Step IDs can be anything, but must be strings. Empty string ID might be an issue for some systems but planner.go allows it.
+				return nil, fmt.Errorf("manage_plan: invalid type for step ID in 'new_step_order' at index %d, expected string", i)
+			}
+			// We allow empty strings as step IDs if the planner package supports them.
+			// The Reorder method in planner.go itself will ignore IDs not found.
+			newStepOrder = append(newStepOrder, idStr)
+		}
+
+		plan, err := plans.Get(plannerName)
+		if err != nil {
+			return nil, fmt.Errorf("manage_plan: failed to get plan '%s' for reordering steps: %w", plannerName, err)
+		}
+
+		plan.Reorder(newStepOrder) // Call the in-memory reorder method
+
+		if err := plans.Save(plan); err != nil { // Persist the changes
+			return nil, fmt.Errorf("manage_plan: failed to save plan '%s' after reordering steps: %w", plannerName, err)
+		}
+		return map[string]any{
+			"result":    fmt.Sprintf("Steps in plan '%s' reordered successfully.", plannerName),
+			"plan_name": plannerName,
 		}, nil
 
 	default:

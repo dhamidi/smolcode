@@ -1,0 +1,42 @@
+{
+  "id": "tool_reorder_action",
+  "steps": [
+    {
+      "id": "update_tool_definition_reorder",
+      "description": "Update PlannerTool definition in tool_planner.go with new parameter and action.",
+      "status": "DONE",
+      "acceptance": [
+        "'new_step_order' parameter is added to tool schema.",
+        "'reorder_steps' is added to action enum in tool schema."
+      ]
+    },
+    {
+      "id": "implement_reorder_action_logic",
+      "description": "Implement the 'reorder_steps' action logic in the managePlan function.",
+      "status": "DONE",
+      "acceptance": [
+        "'reorder_steps' case is added to managePlan switch.",
+        "Logic correctly extracts 'new_step_order'.",
+        "plan.Reorder() is called.",
+        "plan.Save() is called after reordering.",
+        "Appropriate JSON response is returned."
+      ]
+    },
+    {
+      "id": "list_changes_tool_reorder",
+      "description": "Use list_changes to view modifications.",
+      "status": "DONE",
+      "acceptance": [
+        "Diff of tool_planner.go shows all intended changes."
+      ]
+    },
+    {
+      "id": "create_checkpoint_tool_reorder",
+      "description": "Create a checkpoint for the new 'reorder_steps' action.",
+      "status": "TODO",
+      "acceptance": [
+        "Checkpoint created with a descriptive commit message."
+      ]
+    }
+  ]
+}

@@ -32,7 +32,7 @@
     {
       "id": "create_checkpoint_reorder",
       "description": "Create a checkpoint for the new Reorder method.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Checkpoint created successfully with a descriptive message."
       ]
@@ -40,7 +40,7 @@
     {
       "id": "note_tool_planner_next_step",
       "description": "Acknowledge that exposing Reorder via tool_planner.go is a potential next step.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Note is made about future tool_planner.go update."
       ]
