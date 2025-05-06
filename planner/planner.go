@@ -103,32 +103,32 @@ func (p *Planner) Get(name string) (*Plan, error) {
 	return plan, nil
 }
 
-// Inspect converts the plan into a Markdown string representation.
-// Each step becomes a headline indicating its status (DONE/TODO).
-// The description follows as a paragraph.
-// Acceptance criteria are presented as a numbered list.
 func (pl *Plan) Inspect() string {
 	var builder strings.Builder
 
 	// Maybe add a title for the plan itself?
-
+	// builder.WriteString(fmt.Sprintf("# Plan: %s\n\n", pl.ID)) // Corrected to \n
 	for i, step := range pl.Steps {
-		// Headline includes step number, status, and description (or ID if no description)
-		headlineText := step.description // Use field
-		if headlineText == "" {
-			headlineText = step.id // Use field
+		descriptionText := step.description // Use field
+		if descriptionText == "" {
+			// If description is empty, the headline will just be the ID.
+			// No need to set descriptionText to step.id here, as ID is always included.
 		}
-		// Status is uppercase as per requirement (DONE/TODO)
-		builder.WriteString(fmt.Sprintf("## %d. [%s] %s\\n\\n", i+1, strings.ToUpper(step.status), headlineText)) // Use field
 
-		// The requirement seems to put the description IN the headline, so let's stick to that.
-
+		// Headline: includes step number, status, ID, and description.
+		// Description is omitted from the headline if it's empty.
+		header := fmt.Sprintf("## %d. [%s] %s", i+1, strings.ToUpper(step.status), step.id) // Use fields
+		if descriptionText != "" {
+			header += ": " + descriptionText
+		}
+		builder.WriteString(header + "\n\n") // Corrected to \n
+		// Acceptance criteria numbered list
 		if len(step.acceptance) > 0 { // Use field
-			builder.WriteString("Acceptance Criteria:\\n")
-			for j, criterion := range step.acceptance { // Use field
-				builder.WriteString(fmt.Sprintf("%d. %s\\n", j+1, criterion))
+			builder.WriteString("Acceptance Criteria:\n") // Corrected to \n
+			for j, criterion := range step.acceptance {   // Use field
+				builder.WriteString(fmt.Sprintf("%d. %s\n", j+1, criterion)) // Corrected to \n
 			}
-			builder.WriteString("\\n") // Add a newline after the list
+			builder.WriteString("\n") // Add a newline after the list
 		}
 	}
 

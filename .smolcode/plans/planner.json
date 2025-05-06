@@ -8,6 +8,15 @@
       "acceptance": [
         "The planner package does not log anything"
       ]
+    },
+    {
+      "id": "fix-inspect-output",
+      "description": "The output of plan inspect \u003cplan-name\u003e doesnt render right: there are backslash-n sequences instead of newlines; also the the step identifier is not included in the headline for a task.",
+      "status": "DONE",
+      "acceptance": [
+        "Newlines are rendered correctly",
+        "Step identifiers are part of the headline"
+      ]
     }
   ]
 }
