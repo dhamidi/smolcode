@@ -195,6 +195,31 @@ func handlePlanCommand(args []string) {
 		}
 		fmt.Printf("Step '%s' added to plan '%s'.\n", stepID, planName)
 
+	case "list":
+		listCmd := flag.NewFlagSet("list", flag.ExitOnError)
+		listCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go plan list\n")
+			fmt.Fprintf(os.Stderr, "Lists all available plans.\n")
+		}
+		listCmd.Parse(remainingArgs)
+		if listCmd.NArg() != 0 {
+			listCmd.Usage()
+			log.Fatal("Error: 'list' does not take any arguments")
+		}
+
+		planNames, err := plans.List()
+		if err != nil {
+			log.Fatalf("Error listing plans: %v", err)
+		}
+		if len(planNames) == 0 {
+			fmt.Println("No plans found.")
+		} else {
+			fmt.Println("Available plans:")
+			for _, name := range planNames {
+				fmt.Printf("- %s\n", name)
+			}
+		}
+
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown plan subcommand '%s'", subcommand)

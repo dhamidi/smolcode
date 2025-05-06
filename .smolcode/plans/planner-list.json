@@ -4,7 +4,7 @@
     {
       "id": "add-planner-list-func",
       "description": "Implement the `List` method on the `planner.Planner` struct. This method should scan the storage directory (`.smolcode/plans/`) and return a list of all plan names (filenames without the `.json` extension).",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "`planner.Planner` has a `List() ([]string, error)` method.",
         "The `List` method correctly identifies `.json` files in the storage directory.",
