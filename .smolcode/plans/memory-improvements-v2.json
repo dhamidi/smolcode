@@ -4,7 +4,7 @@
     {
       "id": "define-errnotfound",
       "description": "Define a new error memory.ErrNotFound in memory/memory.go. Modify GetMemoryByID and Forget to return this error (or an error wrapping it) instead of leaking sql.ErrNoRows.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "memory.ErrNotFound is defined in memory/memory.go.",
         "memory.GetMemoryByID returns an error that IS memory.ErrNotFound when a fact is not found.",

@@ -52,7 +52,7 @@
     {
       "id": "create_checkpoint_tool_planner",
       "description": "Create a checkpoint with a conventional commit message.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Checkpoint for tool_planner.go changes is created."
       ]

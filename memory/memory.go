@@ -2,12 +2,15 @@ package memory
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 )
+
+var ErrNotFound = errors.New("memory: not found")
 
 // MemoryManager manages memories stored in a SQLite database.
 type MemoryManager struct {
@@ -129,8 +132,8 @@ func (m *MemoryManager) GetMemoryByID(id string) (*Memory, error) {
 	mem := &Memory{}
 	err := row.Scan(&mem.ID, &mem.Content)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("memory with id '%s' not found: %w", id, err) // Consider a custom error type or just sql.ErrNoRows
+		if errors.Is(err, sql.ErrNoRows) { // Check if the underlying error is sql.ErrNoRows
+			return nil, fmt.Errorf("memory with id '%s': %w", id, ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to retrieve memory with id '%s': %w", id, err)
 	}
@@ -214,7 +217,7 @@ func (m *MemoryManager) Forget(id string) error {
 		// We won't fail the operation just because we can't get RowsAffected.
 		fmt.Printf("Warning: could not get rows affected after deleting memory %s: %v\n", id, err)
 	} else if rowsAffected == 0 {
-		return fmt.Errorf("memory with id '%s' not found, nothing to forget", id) // Consider sql.ErrNoRows or a custom error
+		return fmt.Errorf("memory with id '%s' not found to forget: %w", id, ErrNotFound) // Now using custom ErrNotFound
 	}
 
 	return nil
