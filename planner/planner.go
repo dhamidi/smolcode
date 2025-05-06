@@ -66,7 +66,6 @@ func (pl *Plan) Inspect() string {
 	var builder strings.Builder
 
 	// Maybe add a title for the plan itself?
-	// builder.WriteString(fmt.Sprintf("# Plan: %s\\n\\n", pl.ID))
 
 	for i, step := range pl.Steps {
 		// Headline includes step number, status, and description (or ID if no description)
