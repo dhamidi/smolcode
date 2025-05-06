@@ -336,6 +336,20 @@ func handleMemoryCommand(args []string) {
 		}
 		fmt.Printf("Memory '%s' forgotten successfully.\n", memID)
 
+	case "test":
+		testCmd := flag.NewFlagSet("test", flag.ExitOnError)
+		testCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go memory test\n")
+			fmt.Fprintf(os.Stderr, "Tests the memory functionality (add, get, forget).\n")
+		}
+		testCmd.Parse(remainingArgs)
+		if testCmd.NArg() != 0 {
+			testCmd.Usage()
+			log.Fatal("Error: 'test' does not take any arguments")
+		}
+		fmt.Println("Memory test subcommand called. Implementation pending.")
+		// TODO: Implement test logic here in a subsequent step.
+
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go memory <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown memory subcommand '%s'", subcommand)

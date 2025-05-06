@@ -1,0 +1,45 @@
+{
+  "id": "memory-cli-test",
+  "steps": [
+    {
+      "id": "define-test-subcommand",
+      "description": "Define the `memory test` subcommand in `cmd/smolcode/main.go`.",
+      "status": "TODO",
+      "acceptance": [
+        "A new `test` case is added to the switch statement in `handleMemoryCommand`.",
+        "The `test` case does not parse any additional arguments itself."
+      ]
+    },
+    {
+      "id": "implement-test-logic",
+      "description": "Implement the test logic within the `memory test` subcommand.",
+      "status": "TODO",
+      "acceptance": [
+        "The subcommand constructs and executes a command like `go run cmd/smolcode/main.go memory add test-mem 'hello world'`.",
+        "The subcommand constructs and executes a command like `go run cmd/smolcode/main.go memory get test-mem` and verifies the output.",
+        "The subcommand constructs and executes a command like `go run cmd/smolcode/main.go memory forget test-mem`.",
+        "The subcommand constructs and executes a command like `go run cmd/smolcode/main.go memory get test-mem` and verifies that the memory is not found.",
+        "Appropriate messages are printed to the console indicating the progress and success/failure of each step."
+      ]
+    },
+    {
+      "id": "add-command-helper",
+      "description": "Add helper function to execute smolcode commands.",
+      "status": "TODO",
+      "acceptance": [
+        "A new helper function is created, possibly in `cmd/smolcode/main.go` or a new utility file.",
+        "The helper function takes command arguments (e.g., `memory`, `add`, `id`, `content`) and returns the command's output and any error.",
+        "The helper function correctly constructs and executes the `go run cmd/smolcode/main.go ...` command using `os/exec`."
+      ]
+    },
+    {
+      "id": "refactor-test-logic",
+      "description": "Refactor `memory test` to use the command execution helper.",
+      "status": "TODO",
+      "acceptance": [
+        "The `implement-test-logic` step is updated to use the new helper function.",
+        "The test logic correctly interprets the output and errors from the helper function."
+      ]
+    }
+  ]
+}
