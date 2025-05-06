@@ -24,7 +24,7 @@
     {
       "id": "test-plan-remove",
       "description": "Test the new 'plan remove' functionality.",
-      "status": "TODO",
+      "status": "DONE",
       "acceptance": [
         "Project builds successfully.",
         "Removing an existing plan deletes the file and prints success.",
