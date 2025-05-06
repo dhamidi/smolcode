@@ -427,6 +427,16 @@ func handleMemoryCommand(args []string) {
 			log.Fatal("Error: 'test' does not take any arguments")
 		}
 		fmt.Println("Starting memory test...")
+
+		// Build the smolcode executable to ensure we're testing the latest code
+		fmt.Println("Building smolcode executable for test...")
+		buildCmd := exec.Command("go", "build", "-tags", "fts5", "-o", "smolcode", "cmd/smolcode/main.go")
+		buildOutput, errBuild := buildCmd.CombinedOutput()
+		if errBuild != nil {
+			log.Fatalf("Failed to build smolcode for test: %v\nOutput: %s", errBuild, string(buildOutput))
+		}
+		fmt.Println("Build successful.")
+
 		testMemID := "test-mem-cli-refactored"
 		testMemContent := "hello from refactored cli test"
 
@@ -477,8 +487,8 @@ func handleMemoryCommand(args []string) {
 		}
 		// The error from executeSmolcodeCommand for a log.Fatalf in the subcommand will be an ExitError.
 		// The output string will contain the log.Fatalf message.
-		expectedNotFoundMsgPart1 := fmt.Sprintf("Error retrieving memory '%s'", testMemID)           // from log.Fatalf
-		expectedNotFoundMsgPart2 := fmt.Sprintf("memory with id '%s': memory: not found", testMemID) // from the error within GetMemoryByID
+		expectedNotFoundMsgPart1 := fmt.Sprintf("Error retrieving memory '%s'", testMemID)  // from log.Fatalf
+		expectedNotFoundMsgPart2 := fmt.Sprintf("memory with id '%s' not found", testMemID) // from the error within GetMemoryByID
 		if !strings.Contains(getAgainOutput, expectedNotFoundMsgPart1) || !strings.Contains(getAgainOutput, expectedNotFoundMsgPart2) {
 			log.Fatalf("Expected 'not found' message for forgotten memory. Got: %s", getAgainOutput)
 		}
