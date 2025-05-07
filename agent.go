@@ -121,7 +121,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 	}
 
 	// Create cached content if needed (either no cache, or it was invalidated)
-	if agent.cachedContent == "" && (agent.systemInstruction != "" || len(agent.tools.tools) > 0) {
+	if agent.cachedContent == "" && (agent.systemInstruction != "" || len(agent.tools) > 0) {
 		cacheConfig := &genai.CreateCachedContentConfig{
 			DisplayName: fmt.Sprintf("smolcode-cache-%s-%d", agent.name, time.Now().UnixNano()), // Add timestamp for uniqueness
 			// TTL: 24 * time.Hour, // Example TTL
@@ -129,7 +129,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		if agent.systemInstruction != "" {
 			cacheConfig.SystemInstruction = agent.systemPrompt()
 		}
-		if len(agent.tools.tools) > 0 {
+		if len(agent.tools) > 0 {
 			cacheConfig.Tools = []*genai.Tool{agent.tools.List()}
 		}
 
@@ -341,7 +341,7 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 			// We don't need to set them again in the config here.
 		} else {
 			// Only set these if not using a cache (e.g., cache creation failed or was skipped)
-			if len(agent.tools.tools) > 0 {
+			if len(agent.tools) > 0 {
 				config.Tools = []*genai.Tool{agent.tools.List()}
 			}
 			config.SystemInstruction = agent.systemPrompt()
