@@ -81,7 +81,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 	if name == "" {
 		name = "main"
 	}
-	return &Agent{
+	agent := &Agent{
 		client:            client,
 		getUserMessage:    getUserMessage,
 		tools:             tools,
@@ -89,19 +89,78 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		systemInstruction: systemInstruction,
 		history:           initialHistory,
 		name:              name,
-		modelName:         "gemini-2.5-pro-preview-03-25",
+		modelName:         "gemini-2.5-pro-preview-03-25", // Default model
+		// cachedContent and systemPromptModTime are zero initially
 	}
+
+	// Cache Management
+	systemPromptFilePath := "smolcode.md" // Define this once
+	currentSysPromptModTime := time.Time{}
+	fileInfo, err := os.Stat(systemPromptFilePath)
+	if err == nil {
+		currentSysPromptModTime = fileInfo.ModTime()
+	} else {
+		fmt.Fprintf(os.Stderr, "Warning: could not stat %s for cache invalidation: %v\n", systemPromptFilePath, err)
+	}
+
+	// TODO: In a persistent agent scenario, agent.cachedContent and agent.systemPromptModTime would be loaded.
+	// For now, they are always new. If they were loaded, this is where invalidation would be more meaningful.
+	// This example invalidation logic will run, but likely won't find an "old" cache to delete unless the agent object was persisted.
+
+	if !agent.systemPromptModTime.IsZero() && !currentSysPromptModTime.IsZero() && currentSysPromptModTime.After(agent.systemPromptModTime) {
+		if agent.cachedContent != "" {
+			fmt.Printf("System prompt %s changed. Invalidating and deleting old cache: %s for agent %s\n", systemPromptFilePath, agent.cachedContent, agent.name)
+			_, delErr := agent.client.Caches.Delete(context.Background(), agent.cachedContent, nil)
+			if delErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not delete cached content %s for agent %s: %v\n", agent.cachedContent, agent.name, delErr)
+			} else {
+				fmt.Printf("Successfully deleted old cache: %s for agent %s\n", agent.cachedContent, agent.name)
+			}
+			agent.cachedContent = "" // Mark for recreation
+		}
+	}
+
+	// Create cached content if needed (either no cache, or it was invalidated)
+	if agent.cachedContent == "" && (agent.systemInstruction != "" || len(agent.tools.tools) > 0) {
+		cacheConfig := &genai.CreateCachedContentConfig{
+			DisplayName: fmt.Sprintf("smolcode-cache-%s-%d", agent.name, time.Now().UnixNano()), // Add timestamp for uniqueness
+			// TTL: 24 * time.Hour, // Example TTL
+		}
+		if agent.systemInstruction != "" {
+			cacheConfig.SystemInstruction = agent.systemPrompt()
+		}
+		if len(agent.tools.tools) > 0 {
+			cacheConfig.Tools = []*genai.Tool{agent.tools.List()}
+		}
+
+		cachedContentInstance, createErr := agent.client.Caches.Create(context.Background(), agent.modelName, cacheConfig)
+		if createErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not create cached content for agent %s: %v\n", agent.name, createErr)
+		} else {
+			agent.cachedContent = cachedContentInstance.Name
+			if !currentSysPromptModTime.IsZero() { // Only update mod time if we successfully statted the file
+				agent.systemPromptModTime = currentSysPromptModTime
+			}
+			fmt.Printf("Created and using cached content: %s (System Prompt ModTime: %s) for agent %s\n", agent.cachedContent, agent.systemPromptModTime.Format(time.RFC3339), agent.name)
+		}
+	} else if agent.cachedContent != "" {
+		fmt.Printf("Using existing cached content: %s (System Prompt ModTime: %s) for agent %s\n", agent.cachedContent, agent.systemPromptModTime.Format(time.RFC3339), agent.name)
+	}
+
+	return agent
 }
 
 type Agent struct {
-	name              string
-	client            *genai.Client
-	getUserMessage    func() (string, bool)
-	tools             ToolBox
-	tracingEnabled    bool
-	systemInstruction string
-	history           []*genai.Content
-	modelName         string
+	name                string
+	client              *genai.Client
+	getUserMessage      func() (string, bool)
+	tools               ToolBox
+	tracingEnabled      bool
+	systemInstruction   string
+	history             []*genai.Content
+	modelName           string
+	cachedContent       string    // Stores the resource name of the cached content
+	systemPromptModTime time.Time // Stores the modification time of the system prompt when cached
 }
 
 func (agent *Agent) ChooseModel(modelName string) *Agent {
@@ -272,11 +331,24 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 	maxRetries := 5
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		response, err = agent.client.Models.GenerateContent(ctx, "gemini-2.5-pro-preview-03-25", conversation, &genai.GenerateContentConfig{
-			MaxOutputTokens:   4 * 1024,
-			Tools:             []*genai.Tool{agent.tools.List()},
-			SystemInstruction: agent.systemPrompt(),
-		})
+		config := &genai.GenerateContentConfig{
+			MaxOutputTokens: 4 * 1024,
+		}
+
+		if agent.cachedContent != "" {
+			config.CachedContent = agent.cachedContent
+			// When using a valid cache, SystemInstruction and Tools from the cache are used.
+			// We don't need to set them again in the config here.
+		} else {
+			// Only set these if not using a cache (e.g., cache creation failed or was skipped)
+			if len(agent.tools.tools) > 0 {
+				config.Tools = []*genai.Tool{agent.tools.List()}
+			}
+			config.SystemInstruction = agent.systemPrompt()
+		}
+
+		agent.trace("GenerateContentConfig", config) // Log the config being used
+		response, err = agent.client.Models.GenerateContent(ctx, agent.modelName, conversation, config)
 
 		if err == nil {
 			agent.trace("<", response)

@@ -1,0 +1,47 @@
+{
+  "id": "caching-feature",
+  "steps": [
+    {
+      "id": "modify-agent-struct",
+      "description": "Add a `cachedContent string` field to the `Agent` struct.",
+      "status": "TODO",
+      "acceptance": [
+        "`Agent` struct in `agent.go` has a new field `cachedContent` of type `string`."
+      ]
+    },
+    {
+      "id": "cache-system-prompt-and-tools",
+      "description": "In `NewAgent`, create and store a `CachedContent` resource name. This involves serializing/preparing system prompt and tools, then using the `genai` client to create the cache.",
+      "status": "TODO",
+      "acceptance": [
+        "`NewAgent` function calls the appropriate `genai` client method to create a cache.",
+        "`NewAgent` stores the returned cache resource name in `agent.cachedContent`."
+      ]
+    },
+    {
+      "id": "use-cached-content-in-inference",
+      "description": "Modify `runInference` to use the stored `agent.cachedContent` in `GenerateContentConfig` when calling the model.",
+      "status": "TODO",
+      "acceptance": [
+        "`runInference` sets the `CachedContent` field in `genai.GenerateContentConfig` if `agent.cachedContent` is not empty."
+      ]
+    },
+    {
+      "id": "handle-cache-invalidation",
+      "description": "Implement a basic cache invalidation strategy. For now, this could mean re-creating the cache if `smolcode.md` changes.",
+      "status": "TODO",
+      "acceptance": [
+        "The agent re-creates the `CachedContent` if `smolcode.md` has been modified since the last cache creation (e.g., by checking file modification time)."
+      ]
+    },
+    {
+      "id": "test-caching-implementation",
+      "description": "Add tests to verify the caching mechanism.",
+      "status": "TODO",
+      "acceptance": [
+        "Tests confirm `CachedContent` is used in API calls.",
+        "Tests (potentially manual or observational) suggest cache hits are occurring where expected."
+      ]
+    }
+  ]
+}
