@@ -565,6 +565,8 @@ func (agent *Agent) reload() error {
 	args := []string{
 		"go",
 		"run",
+		"-tags",
+		"fts5",
 		mainGoPath,
 		"-c",
 		filename,
