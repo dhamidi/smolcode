@@ -125,11 +125,12 @@ func managePlan(args map[string]any) (map[string]any, error) {
 	// 3. Use a switch on the 'action'.
 	switch action {
 	case "create":
-		plan := plans.Create(plannerName)
-		if err := plans.Save(plan); err != nil {
-			return nil, fmt.Errorf("manage_plan: failed to save new plan '%s': %w", plannerName, err)
+		_, err := plans.Create(plannerName) // plan object is not strictly needed here if we just confirm creation
+		if err != nil {
+			// planner.Create already returns a specific error for "plan already exists"
+			return nil, fmt.Errorf("manage_plan: failed to create plan '%s': %w", plannerName, err)
 		}
-		return map[string]any{"result": fmt.Sprintf("Plan '%s' created.", plannerName)}, nil
+		return map[string]any{"result": fmt.Sprintf("Plan '%s' created successfully.", plannerName)}, nil
 
 	case "inspect":
 		plan, err := plans.Get(plannerName)
@@ -167,23 +168,24 @@ func managePlan(args map[string]any) (map[string]any, error) {
 			return nil, fmt.Errorf("manage_plan: 'set_status' requires 'status' (DONE or TODO)")
 		}
 
-		plan, err := plans.Get(plannerName)
+		// The MarkAsCompleted/Incomplete methods in planner.go take a currentPlan *Plan argument
+		// to update it in memory. So, fetching it first is good if we want to ensure the in-memory 'plan' object is up-to-date.
+		// However, these methods now belong to the Planner service, not the Plan object.
+		retrievedPlan, err := plans.Get(plannerName) // We pass this to MarkAs... to update its internal state if needed by the method.
 		if err != nil {
-			return nil, fmt.Errorf("manage_plan: failed to get plan '%s': %w", plannerName, err)
+			return nil, fmt.Errorf("manage_plan: failed to get plan '%s' for set_status: %w", plannerName, err)
 		}
 
 		if status == "DONE" {
-			err = plan.MarkAsCompleted(stepID)
+			err = plans.MarkAsCompleted(plannerName, stepID, retrievedPlan)
 		} else {
-			err = plan.MarkAsIncomplete(stepID)
+			err = plans.MarkAsIncomplete(plannerName, stepID, retrievedPlan)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("manage_plan: failed to set status for step '%s': %w", stepID, err)
+			// The error from MarkAsComplete/Incomplete might already be specific enough
+			return nil, fmt.Errorf("manage_plan: failed to set status for step '%s' in plan '%s': %w", stepID, plannerName, err)
 		}
-
-		if err := plans.Save(plan); err != nil {
-			return nil, fmt.Errorf("manage_plan: failed to save updated plan '%s': %w", plannerName, err)
-		}
+		// No explicit save needed here as MarkAsCompleted/Incomplete now handle DB persistence.
 		return map[string]any{"result": fmt.Sprintf("Step '%s' in plan '%s' set to '%s'.", stepID, plannerName, status)}, nil
 
 	case "add_steps":
@@ -194,14 +196,20 @@ func managePlan(args map[string]any) (map[string]any, error) {
 
 		plan, err := plans.Get(plannerName)
 		if err != nil {
-			// If plan doesn't exist, create it first.
-			if strings.Contains(err.Error(), "no such file or directory") { // A bit fragile, but planner.Get doesn't return a typed error for this
+			// Check if the error is a "plan not found" type error
+			// planner.Get now returns an error like "plan with name '...' not found"
+			// planner.Create also returns an error if it fails
+			if strings.Contains(strings.ToLower(err.Error()), "not found") { // Make check case-insensitive for robustness
 				log.Printf("manage_plan: Plan '%s' not found, creating it before adding steps.", plannerName)
-				plan = plans.Create(plannerName)
-			} else {
+				plan, err = plans.Create(plannerName) // Assign to plan and new err
+				if err != nil {
+					return nil, fmt.Errorf("manage_plan: failed to create new plan '%s' for adding steps: %w", plannerName, err)
+				}
+			} else { // Any other error from Get
 				return nil, fmt.Errorf("manage_plan: failed to get plan '%s': %w", plannerName, err)
 			}
 		}
+		// If err was nil from Get, plan is already populated and ready
 
 		addedCount := 0
 		for i, stepArg := range stepsToAddArg {

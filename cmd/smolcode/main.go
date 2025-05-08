@@ -98,7 +98,10 @@ func handlePlanCommand(args []string) {
 			log.Fatal("Error: 'new' requires exactly one argument: <plan-name>")
 		}
 		planName := newCmd.Arg(0)
-		plan := plans.Create(planName)
+		plan, err := plans.Create(planName)
+		if err != nil {
+			log.Fatalf("Error creating new plan '%s': %v", planName, err)
+		}
 		if err := plans.Save(plan); err != nil {
 			log.Fatalf("Error saving new plan '%s': %v", planName, err)
 		}
@@ -179,9 +182,9 @@ func handlePlanCommand(args []string) {
 		}
 
 		if status == "DONE" {
-			err = plan.MarkAsCompleted(stepID)
+			err = plans.MarkAsCompleted(planName, stepID, plan)
 		} else {
-			err = plan.MarkAsIncomplete(stepID)
+			err = plans.MarkAsIncomplete(planName, stepID, plan)
 		}
 		if err != nil {
 			log.Fatalf("Error setting status for step '%s' in plan '%s': %v", stepID, planName, err)
