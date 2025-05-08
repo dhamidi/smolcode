@@ -278,7 +278,7 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 	cacheConfig := &genai.CreateCachedContentConfig{
 		DisplayName: fmt.Sprintf("smolcode-turncache-%s-%d", agent.name, time.Now().UnixNano()),
 		TTL:         5 * time.Minute,
-		Model:       agent.modelName, // Model name is required for cache creation
+		// Model:    agent.modelName, // This was incorrect, Model is part of Caches.Create call
 	}
 
 	if agent.systemInstruction != "" {
@@ -292,22 +292,27 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 		cacheConfig.Contents = conversation // Cache the current conversation (history)
 	}
 
-	cachedContentInstance, createErr := agent.client.Caches.Create(ctx, cacheConfig)
+	cachedContentInstance, createErr := agent.client.Caches.Create(ctx, agent.modelName, cacheConfig)
 	if createErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not create turn-specific cached content for agent %s: %v\n", agent.name, createErr)
+		// fmt.Fprintf(os.Stderr, "Warning: could not create turn-specific cached content for agent %s: %v\n", agent.name, createErr)
+		agent.trace("CacheCreate", map[string]string{"status": "error", "agent": agent.name, "error": createErr.Error()})
 		// Proceed without this turn's cache if creation fails
 	} else {
 		turnCacheName = cachedContentInstance.Name
-		fmt.Printf("INFO: Created turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+		// fmt.Printf("INFO: Created turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+		agent.trace("CacheCreate", map[string]string{"status": "success", "cacheName": turnCacheName, "agent": agent.name})
 		// Defer deletion of this turn-specific cache
 		defer func() {
 			if turnCacheName != "" {
-				fmt.Printf("INFO: Deleting turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+				// fmt.Printf("INFO: Deleting turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+				agent.trace("CacheDeleteAttempt", map[string]string{"cacheName": turnCacheName, "agent": agent.name})
 				_, delErr := agent.client.Caches.Delete(context.Background(), turnCacheName, nil)
 				if delErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: could not delete turn-specific cached content %s for agent %s: %v\n", turnCacheName, agent.name, delErr)
+					// fmt.Fprintf(os.Stderr, "Warning: could not delete turn-specific cached content %s for agent %s: %v\n", turnCacheName, agent.name, delErr)
+					agent.trace("CacheDelete", map[string]string{"status": "error", "cacheName": turnCacheName, "agent": agent.name, "error": delErr.Error()})
 				} else {
-					fmt.Printf("INFO: Successfully deleted turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+					// fmt.Printf("INFO: Successfully deleted turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+					agent.trace("CacheDelete", map[string]string{"status": "success", "cacheName": turnCacheName, "agent": agent.name})
 				}
 			}
 		}()
