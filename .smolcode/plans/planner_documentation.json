@@ -1,0 +1,45 @@
+{
+  "id": "planner_documentation",
+  "steps": [
+    {
+      "id": "list_files",
+      "description": "List all files in the `planner` directory and check for `tool_planner.go`.",
+      "status": "DONE",
+      "acceptance": [
+        "Successfully listed files in 'planner/' and confirmed existence of 'tool_planner.go'."
+      ]
+    },
+    {
+      "id": "read_files",
+      "description": "Read the content of each identified file.",
+      "status": "DONE",
+      "acceptance": [
+        "All relevant files have been read."
+      ]
+    },
+    {
+      "id": "draft_documentation",
+      "description": "Write the initial draft of the documentation into `planner/planner.md`.",
+      "status": "DONE",
+      "acceptance": [
+        "Initial draft of 'planner/planner.md' is created."
+      ]
+    },
+    {
+      "id": "review_documentation",
+      "description": "Review the drafted documentation for accuracy and completeness.",
+      "status": "DONE",
+      "acceptance": [
+        "Documentation has been reviewed against requirements."
+      ]
+    },
+    {
+      "id": "finalize_documentation",
+      "description": "Make necessary revisions to the documentation.",
+      "status": "DONE",
+      "acceptance": [
+        "'planner/planner.md' is finalized and accurate."
+      ]
+    }
+  ]
+}
