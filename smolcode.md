@@ -52,6 +52,10 @@ ALWAYS use the edit_tool to edit files.
 
 If using the `edit_file` fails, recreate the file from scratch using the `write_file` tool.
 
+Prefer the SMALLEST POSSIBLE `old_str` to identify the right place in a file to edit.
+
+It's better to make many frequent edits than to make big edits in one go.
+
 # Running external commands
 
 You liberally use the run_command tool to fulfill the user's requests.

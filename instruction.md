@@ -1,11 +1,13 @@
-Run the tests using this command: `go test -tags fts5 ./memory/`
+It is time to refactor the planner/ module.
 
-There will be errors.
+The original design goal was to have the following pattern:
 
-Here are the tests cases that are relevant:
+1. plans.Create returns an memory-based plan instance,
+2. methods on the plan instance change the state of the plan,
+3. Only when plans.Save(plan) is called, the plan is persisted to the database.
 
-- search for: `build command` should return documents containing both `build` and `command`
-- search for: `build` should return documents containing `build`
-- search for: `path/file.txt` should return documents containing the exact file path
+First evaluate the current design of the planning module based on planner/planner.md and corresponding code files.
 
-Rewrite test cases as necessary to match this behavior.
+Then make a report of how what is implemented right now differs from the intended design.
+
+Then make a detailed plan `planner-refactor` to change the code to match the design.

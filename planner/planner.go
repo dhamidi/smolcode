@@ -19,6 +19,7 @@ type Planner struct {
 type Plan struct {
 	ID    string  `json:"id"` // Unique identifier for the plan, e.g., "active"
 	Steps []*Step `json:"steps"`
+	isNew bool    // Internal flag to indicate if the plan is new and not yet saved
 }
 
 // PlanInfo holds summary information about a plan.
@@ -101,27 +102,21 @@ func (p *Planner) Close() error {
 	return nil
 }
 
-// Create inserts a new plan into the 'plans' table and returns an in-memory Plan object.
+// Create returns an in-memory Plan object.
 // The ID of the plan is set to its name.
+// The plan is not persisted to the database until Save is called.
 func (p *Planner) Create(name string) (*Plan, error) {
 	if name == "" {
 		return nil, fmt.Errorf("plan name cannot be empty")
 	}
 
-	_, err := p.db.Exec("INSERT INTO plans (id) VALUES (?)", name)
-	if err != nil {
-		// Check if the error is due to a unique constraint violation (plan already exists)
-		// This error message might be SQLite specific.
-		// For more robust error handling, consider using specific error types if the driver provides them.
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			return nil, fmt.Errorf("plan with name '%s' already exists", name)
-		}
-		return nil, fmt.Errorf("failed to insert plan '%s' into database: %w", name, err)
-	}
+	// TODO: Check if a plan with this name already exists in the DB if we want to prevent overwriting on Save.
+	// For now, Create will always return a new plan object, and Save will handle insertion or update.
 
 	return &Plan{
 		ID:    name,
 		Steps: []*Step{},
+		isNew: true, // Mark as new
 	}, nil
 }
 
@@ -139,6 +134,7 @@ func (p *Planner) Get(name string) (*Plan, error) {
 	plan := &Plan{
 		ID:    planID,
 		Steps: []*Step{},
+		isNew: false, // Explicitly set isNew to false for a plan loaded from DB
 	}
 
 	rows, err := p.db.Query("SELECT id, description, status, step_order FROM steps WHERE plan_id = ? ORDER BY step_order ASC", planID)
@@ -257,71 +253,28 @@ func (step *Step) AcceptanceCriteria() []string {
 	return step.acceptance
 }
 
-// MarkAsCompleted finds a step by its ID within a specific plan and sets its status to "DONE" in the database and in-memory.
-// It also updates the in-memory plan object if provided.
-func (p *Planner) MarkAsCompleted(planID string, stepID string, currentPlan *Plan) error {
-	result, err := p.db.Exec("UPDATE steps SET status = ? WHERE plan_id = ? AND id = ?", "DONE", planID, stepID)
-	if err != nil {
-		return fmt.Errorf("failed to update step '%s' in plan '%s' to DONE: %w", stepID, planID, err)
-	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		// This error is less critical for the operation itself but good for diagnostics.
-		return fmt.Errorf("failed to get rows affected after updating step '%s' in plan '%s': %w", stepID, planID, err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("step with ID '%s' not found in plan '%s' in the database", stepID, planID)
-	}
-
-	// Update in-memory plan if provided
-	if currentPlan != nil && currentPlan.ID == planID {
-		found := false
-		for _, step := range currentPlan.Steps {
-			if step.id == stepID {
-				step.status = "DONE"
-				found = true
-				break
-			}
-		}
-		if !found {
-			// This indicates a discrepancy between DB and in-memory, which might be an issue.
-			// For now, we'll just return an error or warning.
-			return fmt.Errorf("step '%s' updated in DB but not found in provided in-memory plan '%s'", stepID, planID)
+// MarkAsCompleted sets the status of the step with the given stepID to "DONE" in-memory.
+// It returns an error if the step is not found.
+func (pl *Plan) MarkAsCompleted(stepID string) error {
+	for _, step := range pl.Steps {
+		if step.id == stepID {
+			step.status = "DONE"
+			return nil
 		}
 	}
-	return nil
+	return fmt.Errorf("step with ID '%s' not found in plan '%s'", stepID, pl.ID)
 }
 
-// MarkAsIncomplete finds a step by its ID  within a specific plan and sets its status to "TODO" in the database and in-memory.
-// It also updates the in-memory plan object if provided.
-func (p *Planner) MarkAsIncomplete(planID string, stepID string, currentPlan *Plan) error {
-	result, err := p.db.Exec("UPDATE steps SET status = ? WHERE plan_id = ? AND id = ?", "TODO", planID, stepID)
-	if err != nil {
-		return fmt.Errorf("failed to update step '%s' in plan '%s' to TODO: %w", stepID, planID, err)
-	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected after updating step '%s' in plan '%s': %w", stepID, planID, err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("step with ID '%s' not found in plan '%s' in the database", stepID, planID)
-	}
-
-	// Update in-memory plan if provided
-	if currentPlan != nil && currentPlan.ID == planID {
-		found := false
-		for _, step := range currentPlan.Steps {
-			if step.id == stepID {
-				step.status = "TODO"
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("step '%s' updated in DB but not found in provided in-memory plan '%s'", stepID, planID)
+// MarkAsIncomplete sets the status of the step with the given stepID to "TODO" in-memory.
+// It returns an error if the step is not found.
+func (pl *Plan) MarkAsIncomplete(stepID string) error {
+	for _, step := range pl.Steps {
+		if step.id == stepID {
+			step.status = "TODO"
+			return nil
 		}
 	}
-	return nil
+	return fmt.Errorf("step with ID '%s' not found in plan '%s'", stepID, pl.ID)
 }
 
 // AddStep appends a new step to the plan.
@@ -464,6 +417,8 @@ func (p *Planner) List() ([]PlanInfo, error) {
 }
 
 // Save persists changes to a plan and its steps in the database using a transaction.
+// If plan.isNew is true, it inserts the plan into the 'plans' table first.
+// After successful save of a new plan, plan.isNew is set to false.
 func (p *Planner) Save(plan *Plan) error {
 	tx, err := p.db.Begin()
 	if err != nil {
@@ -471,8 +426,29 @@ func (p *Planner) Save(plan *Plan) error {
 	}
 	defer tx.Rollback() // Rollback if not committed
 
-	// In a real application, you might update a 'last_modified' timestamp in the 'plans' table here.
-	// For now, we assume the plan record itself (just an ID) doesn\'t change once created.
+	if plan.isNew {
+		_, err := tx.Exec("INSERT INTO plans (id) VALUES (?)", plan.ID)
+		if err != nil {
+			// Check if the error is due to a unique constraint violation (plan already exists)
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				return fmt.Errorf("plan with name '%s' already exists in database, cannot save as new", plan.ID)
+			}
+			return fmt.Errorf("failed to insert new plan '%s' into database: %w", plan.ID, err)
+		}
+		// Successfully inserted, mark as not new for future saves of this instance
+		// plan.isNew = false // This mutation should happen only after the transaction commits.
+	} else {
+		// If it's not a new plan, we might still want to verify it exists to provide a clearer error
+		// than what might come from step synchronization.
+		var checkID string
+		err := tx.QueryRow("SELECT id FROM plans WHERE id = ?", plan.ID).Scan(&checkID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("plan with name '%s' not found in database, cannot update", plan.ID)
+			}
+			return fmt.Errorf("failed to verify existence of plan '%s': %w", plan.ID, err)
+		}
+	}
 
 	// --- Synchronize steps --- //
 
@@ -490,26 +466,22 @@ func (p *Planner) Save(plan *Plan) error {
 		}
 		dbStepIDs[stepID] = true
 	}
-	rows.Close()                      // Important to close rows before further operations on tx
-	if err = rows.Err(); err != nil { // Check for errors during iteration
+	rows.Close()
+	if err = rows.Err(); err != nil {
 		return fmt.Errorf("error iterating existing step IDs: %w", err)
 	}
 
-	// Identify steps to delete, update, or insert
 	planStepIDs := make(map[string]bool)
 	for _, step := range plan.Steps {
 		planStepIDs[step.id] = true
 	}
 
-	// Delete steps not in the current plan.Steps
 	for dbStepID := range dbStepIDs {
 		if !planStepIDs[dbStepID] {
-			// Delete acceptance criteria for the step first (due to foreign key)
 			_, err = tx.Exec("DELETE FROM step_acceptance_criteria WHERE plan_id = ? AND step_id = ?", plan.ID, dbStepID)
 			if err != nil {
 				return fmt.Errorf("failed to delete old acceptance criteria for step '%s' in plan '%s': %w", dbStepID, plan.ID, err)
 			}
-			// Then delete the step itself
 			_, err = tx.Exec("DELETE FROM steps WHERE plan_id = ? AND id = ?", plan.ID, dbStepID)
 			if err != nil {
 				return fmt.Errorf("failed to delete step '%s' from plan '%s': %w", dbStepID, plan.ID, err)
@@ -517,16 +489,15 @@ func (p *Planner) Save(plan *Plan) error {
 		}
 	}
 
-	// Update existing steps or insert new ones
 	for i, step := range plan.Steps {
-		step.stepOrder = i      // Ensure stepOrder is current
-		if dbStepIDs[step.id] { // If step exists in DB, update it
+		step.stepOrder = i
+		if dbStepIDs[step.id] {
 			_, err = tx.Exec("UPDATE steps SET description = ?, status = ?, step_order = ? WHERE plan_id = ? AND id = ?",
 				step.description, step.status, step.stepOrder, plan.ID, step.id)
 			if err != nil {
 				return fmt.Errorf("failed to update step '%s' in plan '%s': %w", step.id, plan.ID, err)
 			}
-		} else { // Otherwise, insert it
+		} else {
 			_, err = tx.Exec("INSERT INTO steps (id, plan_id, description, status, step_order) VALUES (?, ?, ?, ?, ?)",
 				step.id, plan.ID, step.description, step.status, step.stepOrder)
 			if err != nil {
@@ -534,14 +505,11 @@ func (p *Planner) Save(plan *Plan) error {
 			}
 		}
 
-		// --- Synchronize acceptance criteria for this step --- //
-		// Delete all existing criteria for the current step first
 		_, err = tx.Exec("DELETE FROM step_acceptance_criteria WHERE plan_id = ? AND step_id = ?", plan.ID, step.id)
 		if err != nil {
 			return fmt.Errorf("failed to delete old acceptance criteria for step '%s' in plan '%s': %w", step.id, plan.ID, err)
 		}
 
-		// Insert current acceptance criteria for the step
 		for j, acText := range step.acceptance {
 			_, err = tx.Exec("INSERT INTO step_acceptance_criteria (plan_id, step_id, criterion_order, criterion) VALUES (?, ?, ?, ?)",
 				plan.ID, step.id, j, acText)
@@ -551,7 +519,17 @@ func (p *Planner) Save(plan *Plan) error {
 		}
 	}
 
-	return tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction for plan '%s': %w", plan.ID, err)
+	}
+
+	// If we successfully committed a new plan, update its in-memory status.
+	if plan.isNew {
+		plan.isNew = false
+	}
+
+	return nil
 }
 
 // Remove deletes plans from the database by their names (IDs).
