@@ -54,6 +54,7 @@ func Code(conversationFilename string, modelName string) {
 		Add(ReadFileTool).
 		Add(ListFilesTool).
 		Add(EditFileTool).
+		Add(WriteFileTool). // Added WriteFileTool
 		Add(CreateCheckpointTool).
 		Add(ListChangesTool).
 		Add(RunCommandTool).
