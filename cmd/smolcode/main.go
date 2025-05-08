@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	planStoragePath = ".smolcode/plans/plans.db" // Changed to file path
+	planStoragePath = ".smolcode/plans.db" // Standardized path
 	memoryDBPath    = ".smolcode/memory.db"
 )
 
