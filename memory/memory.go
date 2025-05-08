@@ -130,13 +130,12 @@ func (m *MemoryManager) GetMemoryByID(id string) (*Memory, error) {
 	return mem, nil
 }
 
-// escapeFTSQueryString escapes a string for FTS5 query syntax.
-// It replaces " with "" and wraps the string in ".
+// escapeFTSQueryString escapes double quotes within a query string for FTS5.
+// It no longer wraps the entire query in quotes to allow for term-based search.
 func escapeFTSQueryString(query string) string {
-	// Replace a single double quote with two double quotes.
+	// Replace a single double quote with two double quotes for FTS5.
 	escapedQuery := strings.ReplaceAll(query, "\"", "\"\"")
-	// Wrap the result in single double quotes.
-	return fmt.Sprintf("\"%s\"", escapedQuery)
+	return escapedQuery // Return the query with internal quotes escaped, but not wrapped.
 }
 
 // SearchMemory performs a full-text search on the content of memories.

@@ -44,7 +44,13 @@ Only then do you read the file.
 
 ## Editing files
 
+ONLY when the user requests it show individual file blocks.
+
 NEVER return the content of a file as a separate message – always edit files through the edit_file tool.
+
+ALWAYS use the edit_tool to edit files.
+
+If using the `edit_file` fails, recreate the file from scratch using the `write_file` tool.
 
 # Running external commands
 

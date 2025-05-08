@@ -189,3 +189,60 @@ func TestSearchMemoryWithSpecialChars(t *testing.T) {
 	})
 
 }
+
+func TestSearchMemoryBuildCommand(t *testing.T) {
+	mm, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	memories := []struct {
+		id      string
+		content string
+	}{
+		{"bc_phrase", "This is a build command."},
+		{"bc_separate", "The build process needs a specific command to run."},
+		{"b_only", "This document talks about build."},
+		{"c_only", "This document talks about command."},
+		{"neither", "This is an unrelated document."},
+	}
+
+	for _, mem := range memories {
+		if err := mm.AddMemory(mem.id, mem.content); err != nil {
+			t.Fatalf("AddMemory(%s, %s) failed: %v", mem.id, mem.content, err)
+		}
+	}
+
+	query := "build command"
+	results, err := mm.SearchMemory(query)
+	if err != nil {
+		t.Fatalf("SearchMemory(%s) failed: %v", query, err)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("SearchMemory(%s): got %d results, want 2. Results: %v", query, len(results), results)
+		// For debugging, print found IDs
+		var resultIDs []string
+		for _, r := range results {
+			resultIDs = append(resultIDs, r.ID)
+		}
+		t.Logf("Found IDs: %v", resultIDs)
+	}
+
+	foundIDs := make(map[string]bool)
+	for _, res := range results {
+		foundIDs[res.ID] = true
+	}
+
+	expectedToFind := []string{"bc_phrase", "bc_separate"}
+	for _, id := range expectedToFind {
+		if !foundIDs[id] {
+			t.Errorf("SearchMemory(%s): expected to find ID %s, but not found in results %v", query, id, results)
+		}
+	}
+
+	expectedToNotFind := []string{"b_only", "c_only", "neither"}
+	for _, id := range expectedToNotFind {
+		if foundIDs[id] {
+			t.Errorf("SearchMemory(%s): expected NOT to find ID %s, but it was found in results %v", query, id, results)
+		}
+	}
+}

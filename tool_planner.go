@@ -9,7 +9,7 @@ import (
 	"google.golang.org/genai"
 )
 
-const planStoragePath = ".smolcode/plans/"
+const planStoragePath = ".smolcode/plans.db"
 
 // Define the Step structure for parameter definition
 var plannerStepSchema = &genai.Schema{

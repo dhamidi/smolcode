@@ -225,7 +225,11 @@ func (agent *Agent) Run(ctx context.Context) error {
 				continue
 			}
 			userMessage := genai.NewContentFromText(userInput, genai.RoleUser)
-			agent.history = append(agent.history, userMessage)
+			if isContentEmpty(userMessage) {
+				agent.skipMessage("User input is empty, not adding to history.")
+			} else {
+				agent.history = append(agent.history, userMessage)
+			}
 		}
 
 		response, err := agent.runInference(ctx, agent.history)
@@ -249,7 +253,11 @@ func (agent *Agent) Run(ctx context.Context) error {
 			readUserInput = true
 			continue
 		}
-		agent.history = append(agent.history, responseMessage)
+		if isContentEmpty(responseMessage) {
+			agent.skipMessage("Model response is empty, not adding to history.")
+		} else {
+			agent.history = append(agent.history, responseMessage)
+		}
 		toolResults := []*genai.Content{}
 
 		for _, content := range responseMessage.Parts {
@@ -267,7 +275,22 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 
 		readUserInput = false
-		agent.history = append(agent.history, toolResults...)
+		// Filter out empty tool results before appending
+		var validToolResults []*genai.Content
+		skippedToolResults := 0
+		for _, tr := range toolResults {
+			if isContentEmpty(tr) {
+				skippedToolResults++
+			} else {
+				validToolResults = append(validToolResults, tr)
+			}
+		}
+		if skippedToolResults > 0 {
+			agent.skipMessage("%d tool result(s) were empty and not added to history.", skippedToolResults)
+		}
+		if len(validToolResults) > 0 {
+			agent.history = append(agent.history, validToolResults...)
+		}
 	}
 
 	// Save conversation history after the loop exits
@@ -324,6 +347,12 @@ func (agent *Agent) toolMessage(fmtStr string, value ...any) {
 
 func (agent *Agent) geminiMessage(fmtStr string, value ...any) {
 	fmt.Printf("\u001b[93mGemini [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
+}
+
+func (agent *Agent) skipMessage(fmtStr string, value ...any) {
+	// Use a distinct color for skipped messages, e.g., yellow or cyan.
+	// Let's use cyan (96m) for visibility.
+	fmt.Printf("\\033[96mSkip   [%d]\\033[0m: "+fmtStr+"\\n", append([]any{len(agent.history)}, value...)...)
 }
 
 func (agent *Agent) trace(direction string, arg any) {
@@ -565,6 +594,34 @@ func readFileContent(filepath string) (string, error) {
 		return "", fmt.Errorf("reading file %q: %w", filepath, err)
 	}
 	return string(content), nil
+}
+
+// isContentEmpty checks if a genai.Content is effectively empty.
+func isContentEmpty(content *genai.Content) bool {
+	if content == nil || len(content.Parts) == 0 {
+		return true
+	}
+	for _, part := range content.Parts {
+		// We need to cast part to genai.Part if it's an interface.
+		// Assuming part is already of a concrete type that has the fields.
+		// If genai.Part is an interface, this might need adjustment.
+		// For now, let's assume it's a struct or a pointer to one, accessible directly.
+		if !isPartEmpty(part) { // No cast needed if content.Parts is already []genai.Part
+			return false
+		}
+	}
+	return true
+}
+
+// isPartEmpty checks if a genai.Part is effectively empty.
+func isPartEmpty(part *genai.Part) bool {
+	// Check all fields of genai.Part that can hold content.
+	// Note: This needs to be updated if genai.Part adds new content fields.
+	return part.Text == "" &&
+		part.InlineData == nil &&
+		part.FileData == nil &&
+		part.FunctionCall == nil &&
+		part.FunctionResponse == nil
 }
 
 func AsJSON(value any) string {
