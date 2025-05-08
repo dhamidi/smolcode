@@ -100,15 +100,16 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 }
 
 type Agent struct {
-	name              string
-	client            *genai.Client
-	getUserMessage    func() (string, bool)
-	tools             ToolBox
-	tracingEnabled    bool
-	systemInstruction string
-	history           []*genai.Content
-	modelName         string
-	cachedContent     string // Stores the resource name of the cached content
+	name               string
+	client             *genai.Client
+	getUserMessage     func() (string, bool)
+	tools              ToolBox
+	tracingEnabled     bool
+	systemInstruction  string
+	history            []*genai.Content
+	modelName          string
+	cachedContent      string // Stores the resource name of the cached content
+	cachedHistoryCount int    // Number of history entries in cachedContent
 }
 
 func (agent *Agent) ChooseModel(modelName string) *Agent {
@@ -126,6 +127,69 @@ func (agent *Agent) DisableTracing() *Agent {
 	return agent
 }
 
+func (agent *Agent) refreshCache(ctx context.Context) {
+	// Only refresh cache if there's history and (no cache exists or history has grown)
+	if len(agent.history) == 0 || (agent.cachedContent != "" && len(agent.history) == agent.cachedHistoryCount) {
+		// No history to cache, or cache is up-to-date
+		return
+	}
+
+	// Delete old cache if it exists
+	if agent.cachedContent != "" {
+		agent.trace("CacheDeleteAttempt", map[string]string{"cacheName": agent.cachedContent, "agent": agent.name, "reason": "refreshing"})
+		_, delErr := agent.client.Caches.Delete(context.Background(), agent.cachedContent, nil) // Use a background context for deletion
+		if delErr != nil {
+			agent.trace("CacheDelete", map[string]string{"status": "error", "cacheName": agent.cachedContent, "agent": agent.name, "error": delErr.Error()})
+			// Log error but proceed, as we'll try to create a new one.
+			// fmt.Fprintf(os.Stderr, "Warning: could not delete old cached content %s for agent %s: %v\n", agent.cachedContent, agent.name, delErr)
+		} else {
+			agent.trace("CacheDelete", map[string]string{"status": "success", "cacheName": agent.cachedContent, "agent": agent.name})
+		}
+		agent.cachedContent = "" // Clear old cache name
+		agent.cachedHistoryCount = 0
+	}
+
+	cacheConfig := &genai.CreateCachedContentConfig{
+		DisplayName: fmt.Sprintf("smolcode-cache-%s-%d", agent.name, time.Now().UnixNano()),
+		TTL:         15 * time.Minute, // Longer TTL for a persistent cache
+		// Model is part of Caches.Create call
+	}
+
+	if agent.systemInstruction != "" {
+		cacheConfig.SystemInstruction = agent.systemPrompt()
+	}
+	if len(agent.tools) > 0 {
+		cacheConfig.Tools = []*genai.Tool{agent.tools.List()}
+	}
+
+	// Cache the current full history
+	if len(agent.history) > 0 {
+		cacheConfig.Contents = agent.history
+	} else {
+		// Cannot create an empty cache, or a cache with only system instruction/tools.
+		// The API requires at least one Content object if SystemInstruction and Tools are not set.
+		// If history is empty, and we only have sys instruction/tools, it might be better to not cache.
+		// For now, we'll let it try and handle potential errors.
+		// Or, more robustly, only proceed if there's something concrete to cache (history, or sys instruct + tools)
+		if cacheConfig.SystemInstruction == nil && len(cacheConfig.Tools) == 0 {
+			agent.trace("CacheCreateSkip", map[string]string{"reason": "nothing to cache", "agent": agent.name})
+			return
+		}
+	}
+
+	cachedContentInstance, createErr := agent.client.Caches.Create(ctx, agent.modelName, cacheConfig)
+	if createErr != nil {
+		agent.trace("CacheCreate", map[string]string{"status": "error", "agent": agent.name, "error": createErr.Error()})
+		// fmt.Fprintf(os.Stderr, "Warning: could not create cached content for agent %s: %v\n", agent.name, createErr)
+		agent.cachedContent = ""
+		agent.cachedHistoryCount = 0
+	} else {
+		agent.cachedContent = cachedContentInstance.Name
+		agent.cachedHistoryCount = len(agent.history) // Record how much history is in this new cache
+		agent.trace("CacheCreate", map[string]string{"status": "success", "cacheName": agent.cachedContent, "agent": agent.name, "historyCount": fmt.Sprintf("%d", agent.cachedHistoryCount)})
+	}
+}
+
 func (agent *Agent) Run(ctx context.Context) error {
 	if agent.history == nil {
 		agent.history = []*genai.Content{}
@@ -135,6 +199,8 @@ func (agent *Agent) Run(ctx context.Context) error {
 	readUserInput := true
 	for {
 		if readUserInput {
+			agent.refreshCache(ctx) // Refresh cache before getting user input
+
 			fmt.Printf("\u001b[94mYou [%d]\u001b[0m: ", len(agent.history)) // Print prompt with history length
 			userInput, ok := agent.getUserMessage()
 			if !ok {
@@ -346,8 +412,18 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 			// Note: The 'conversation' argument to GenerateContent will be used directly in this case.
 		}
 
+		var conversationToSend []*genai.Content
+		if turnCacheName != "" {
+			// If using cache, send no explicit conversation history in the GenerateContent call itself,
+			// as it's already in turnCacheName.
+			conversationToSend = nil
+		} else {
+			// If not using cache, send the provided conversation history.
+			conversationToSend = conversation
+		}
 		agent.trace("GenerateContentConfig", config) // Log the config being used
-		response, err = agent.client.Models.GenerateContent(ctx, agent.modelName, conversation, config)
+		// Pass conversationToSend instead of the original 'conversation'
+		response, err = agent.client.Models.GenerateContent(ctx, agent.modelName, conversationToSend, config)
 
 		if err == nil {
 			agent.trace("<", response)
