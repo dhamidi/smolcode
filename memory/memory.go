@@ -2,6 +2,7 @@ package memory
 
 import (
 	_ "embed"
+	"strings" // Added for strings.ReplaceAll
 
 	"database/sql"
 	"errors"
@@ -129,6 +130,15 @@ func (m *MemoryManager) GetMemoryByID(id string) (*Memory, error) {
 	return mem, nil
 }
 
+// escapeFTSQueryString escapes a string for FTS5 query syntax.
+// It replaces " with "" and wraps the string in ".
+func escapeFTSQueryString(query string) string {
+	// Replace a single double quote with two double quotes.
+	escapedQuery := strings.ReplaceAll(query, "\"", "\"\"")
+	// Wrap the result in single double quotes.
+	return fmt.Sprintf("\"%s\"", escapedQuery)
+}
+
 // SearchMemory performs a full-text search on the content of memories.
 // It returns a slice of matching Memory structs.
 func (m *MemoryManager) SearchMemory(query string) ([]*Memory, error) {
@@ -139,7 +149,8 @@ func (m *MemoryManager) SearchMemory(query string) ([]*Memory, error) {
 	WHERE fts.memories_fts MATCH ?
 	ORDER BY rank;
 	`
-	rows, err := m.db.Query(ftsQuerySQL, query)
+	escapedQuery := escapeFTSQueryString(query)
+	rows, err := m.db.Query(ftsQuerySQL, escapedQuery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute FTS query for docids: %w", err)
 	}
