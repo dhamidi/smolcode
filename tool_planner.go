@@ -124,14 +124,6 @@ func managePlan(args map[string]any) (map[string]any, error) {
 
 	// 3. Use a switch on the 'action'.
 	switch action {
-	case "create":
-		_, err := plans.Create(plannerName) // plan object is not strictly needed here if we just confirm creation
-		if err != nil {
-			// planner.Create already returns a specific error for "plan already exists"
-			return nil, fmt.Errorf("manage_plan: failed to create plan '%s': %w", plannerName, err)
-		}
-		return map[string]any{"result": fmt.Sprintf("Plan '%s' created successfully.", plannerName)}, nil
-
 	case "inspect":
 		plan, err := plans.Get(plannerName)
 		if err != nil {
@@ -168,24 +160,26 @@ func managePlan(args map[string]any) (map[string]any, error) {
 			return nil, fmt.Errorf("manage_plan: 'set_status' requires 'status' (DONE or TODO)")
 		}
 
-		// The MarkAsCompleted/Incomplete methods in planner.go take a currentPlan *Plan argument
-		// to update it in memory. So, fetching it first is good if we want to ensure the in-memory 'plan' object is up-to-date.
-		// However, these methods now belong to the Planner service, not the Plan object.
-		retrievedPlan, err := plans.Get(plannerName) // We pass this to MarkAs... to update its internal state if needed by the method.
+		retrievedPlan, err := plans.Get(plannerName)
 		if err != nil {
 			return nil, fmt.Errorf("manage_plan: failed to get plan '%s' for set_status: %w", plannerName, err)
 		}
 
 		if status == "DONE" {
-			err = plans.MarkAsCompleted(plannerName, stepID, retrievedPlan)
+			err = retrievedPlan.MarkAsCompleted(stepID)
 		} else {
-			err = plans.MarkAsIncomplete(plannerName, stepID, retrievedPlan)
+			err = retrievedPlan.MarkAsIncomplete(stepID)
 		}
+
 		if err != nil {
-			// The error from MarkAsComplete/Incomplete might already be specific enough
 			return nil, fmt.Errorf("manage_plan: failed to set status for step '%s' in plan '%s': %w", stepID, plannerName, err)
 		}
-		// No explicit save needed here as MarkAsCompleted/Incomplete now handle DB persistence.
+
+		// Persist the change to the plan (including the updated step status)
+		if err = plans.Save(retrievedPlan); err != nil {
+			return nil, fmt.Errorf("manage_plan: failed to save plan '%s' after setting status: %w", plannerName, err)
+		}
+
 		return map[string]any{"result": fmt.Sprintf("Step '%s' in plan '%s' set to '%s'.", stepID, plannerName, status)}, nil
 
 	case "add_steps":

@@ -182,9 +182,9 @@ func handlePlanCommand(args []string) {
 		}
 
 		if status == "DONE" {
-			err = plans.MarkAsCompleted(planName, stepID, plan)
+			err = plan.MarkAsCompleted(stepID)
 		} else {
-			err = plans.MarkAsIncomplete(planName, stepID, plan)
+			err = plan.MarkAsIncomplete(stepID)
 		}
 		if err != nil {
 			log.Fatalf("Error setting status for step '%s' in plan '%s': %v", stepID, planName, err)
