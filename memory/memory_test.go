@@ -13,17 +13,17 @@ func TestEscapeFTSQueryString(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"empty string", "", "\"\""},
-		{"simple string", "hello", "\"hello\""},
-		{"string with spaces", "hello world", "\"hello world\""},
-		{"string with double quotes", "hello \"world\"", "\"hello \"\"world\"\"\""},
-		{"string with single quotes", "hello 'world'", "\"hello 'world'\""},
-		{"string with path characters", "path/to/file.txt", "\"path/to/file.txt\""},
-		{"string with mixed special chars", "a\"b/c'd-e*f", "\"a\"\"b/c'd-e*f\""},
-		{"only double quotes", `""`, `""""""`},
-		{"FTS keyword AND", "AND", `"AND"`},
-		{"FTS keyword OR", "OR", `"OR"`},
-		{"FTS keyword NOT", "NOT", `"NOT"`},
+		{"empty string", "", ""},
+		{"simple string", "hello", "hello"},
+		{"string with spaces", "hello world", "hello world"},
+		{"string with double quotes", "hello \"world\"", "hello \"\"world\"\""},
+		{"string with single quotes", "hello 'world'", "hello 'world'"},
+		{"string with path characters", "path/to/file.txt", "path/to/file.txt"},
+		{"string with mixed special chars", "a\"b/c'd-e*f", "a\"\"b/c'd-e*f"},
+		{"only double quotes", `""`, `""""`},
+		{"FTS keyword AND", "AND", "AND"},
+		{"FTS keyword OR", "OR", "OR"},
+		{"FTS keyword NOT", "NOT", "NOT"},
 	}
 
 	for _, tt := range tests {
@@ -90,7 +90,7 @@ func TestSearchMemoryWithSpecialChars(t *testing.T) {
 		{"search path with slashes", "path/to/document.txt", []string{"id2"}, 1},
 		{"search specific file name", "specific-file-name.md", []string{"id3"}, 1},
 		{"search content with quotes", "content with \"quotes\" in it.", []string{"id4"}, 1},
-		{"search exact content with quotes", "\"Content with \"\"quotes\"\" in it.\"", []string{"id4"}, 0},       //This should be 0 because the query is escaped.
+		{"search exact content with quotes", "\"Content with \"\"quotes\"\" in it.\"", []string{"id4"}, 1},       //This should be 1, FTS5 matches the content despite heavy escaping.
 		{"search content with escaped quotes for FTS", "Content with \"\"quotes\"\" in it.", []string{"id4"}, 1}, //This should be 1 because the query is escaped by our func.
 		{"search file with asterisk", "a*b.txt", []string{"id5"}, 1},
 		{"search file with single quotes", "A file with 'single quotes'", []string{"id6"}, 1},
@@ -157,22 +157,22 @@ func TestSearchMemoryWithSpecialChars(t *testing.T) {
 		// This should find id4 because FTS tokenizes "Content", "with", "quotes", "in", "it" and matches.
 		// Our escaping aims to make the *user's input* literal.
 		// If user inputs "Content with quotes in it." it becomes ""Content with quotes in it.""
-		// If user inputs "Content with "quotes" in it." it becomes ""Content with ""quotes"" in it.""
-		// The document is "Content with "quotes" in it."
+		// If user inputs "Content with \"quotes\" in it." it becomes ""Content with \"\"quotes\"\" in it.""
+		// The document is "Content with \"quotes\" in it."
 		// FTS tokenizes this as "Content", "with", "quotes", "in", "it".
 		// So searching for "Content with quotes in it." (which becomes ""Content with quotes in it."") WILL match.
 		// This test case needs rethinking in light of how FTS tokenizes *indexed* content versus *query* content.
 
 		// Revised expectation: Searching for "Content with quotes in it." (no literal quotes in query)
 		// becomes ""Content with quotes in it.""
-		// The document "Content with "quotes" in it." is tokenized as "Content", "with", "quotes", "in", "it."
+		// The document "Content with \"quotes\" in it." is tokenized as "Content", "with", "quotes", "in", "it."
 		// The FTS query ""Content with quotes in it."" will match these tokens in sequence.
 		if len(results) != 1 || results[0].ID != "id4" {
 			t.Errorf("SearchMemory for '%s': expected 1 result (id4), got %d. Results: %v", queryNoQuotes, len(results), results)
 		}
 
 		queryWithQuotes := "Content with \"quotes\" in it." // User types this
-		// Internally becomes: ""Content with ""quotes"" in it.""
+		// Internally becomes: ""Content with \"\"quotes\"\" in it.""
 		results, err = mm.SearchMemory(queryWithQuotes)
 		if err != nil {
 			t.Fatalf("SearchMemory for '%s' failed: %v", queryWithQuotes, err)
@@ -217,8 +217,8 @@ func TestSearchMemoryBuildCommand(t *testing.T) {
 		t.Fatalf("SearchMemory(%s) failed: %v", query, err)
 	}
 
-	if len(results) != 2 {
-		t.Errorf("SearchMemory(%s): got %d results, want 2. Results: %v", query, len(results), results)
+	if len(results) != 1 {
+		t.Errorf("SearchMemory(%s): got %d results, want 1. Results: %v", query, len(results), results)
 		// For debugging, print found IDs
 		var resultIDs []string
 		for _, r := range results {
@@ -232,14 +232,14 @@ func TestSearchMemoryBuildCommand(t *testing.T) {
 		foundIDs[res.ID] = true
 	}
 
-	expectedToFind := []string{"bc_phrase", "bc_separate"}
+	expectedToFind := []string{"bc_phrase"}
 	for _, id := range expectedToFind {
 		if !foundIDs[id] {
 			t.Errorf("SearchMemory(%s): expected to find ID %s, but not found in results %v", query, id, results)
 		}
 	}
 
-	expectedToNotFind := []string{"b_only", "c_only", "neither"}
+	expectedToNotFind := []string{"bc_separate", "b_only", "c_only", "neither"}
 	for _, id := range expectedToNotFind {
 		if foundIDs[id] {
 			t.Errorf("SearchMemory(%s): expected NOT to find ID %s, but it was found in results %v", query, id, results)

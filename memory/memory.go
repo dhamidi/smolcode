@@ -148,8 +148,9 @@ func (m *MemoryManager) SearchMemory(query string) ([]*Memory, error) {
 	WHERE fts.memories_fts MATCH ?
 	ORDER BY rank;
 	`
-	escapedQuery := escapeFTSQueryString(query)
-	rows, err := m.db.Query(ftsQuerySQL, escapedQuery)
+	escapedQueryTerms := escapeFTSQueryString(query)
+	ftsPhraseQuery := fmt.Sprintf("\"%s\"", escapedQueryTerms)
+	rows, err := m.db.Query(ftsQuerySQL, ftsPhraseQuery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute FTS query for docids: %w", err)
 	}
