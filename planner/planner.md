@@ -4,32 +4,31 @@ The Planner module provides functionality for creating, managing, and persisting
 
 ## Overview
 
-The module is designed around a `Planner` type, which acts as the main interface for interacting with plans. Plans are stored as JSON files in a specified storage directory. Each plan has a unique ID (which is also its name and the base of its filename) and contains a list of steps.
+The module is designed around a `Planner` type, which acts as the main interface for interacting with plans. Plans are stored in a SQLite database, specified by a database file path. Each plan has a unique ID and contains a list of steps.
 
 ## Core Concepts
 
 ### Planner
 
-The `Planner` struct is the entry point for all plan management operations. It holds the path to the storage directory where plan files are kept.
+The `Planner` struct is the entry point for all plan management operations. It manages the connection to the SQLite database where plan data is stored.
 
-- `New(storageDir string) (*Planner, error)`: Creates a new `Planner` instance. It ensures the specified `storageDir` exists, creating it if necessary.
+- `New(databasePath string) (*Planner, error)`: Creates a new `Planner` instance, connecting to or creating a SQLite database at the given `databasePath`. It initializes the database schema (defined in `schema.sql`) if it's not already present.
 
 ### Plan
 
 The `Plan` struct represents a collection of steps.
 
-- `ID`: A unique identifier for the plan (e.g., "active"). This ID is used as the filename (e.g., "active.json").
-- `Steps`: A slice of `*Step` pointers.
-- `name`: An internal field representing the plan's name, typically derived from the filename.
+- `ID`: A unique identifier for the plan (e.g., "active"). This ID corresponds to the primary key in the `plans` database table.
+- `Steps`: A slice of `*Step` pointers, representing the ordered tasks within the plan.
 
 #### Plan Methods
 
-- `Create(name string) *Plan`: (Associated with `Planner`) Initializes a new `Plan` in memory with the given name. The plan is not persisted until `Save` is called.
-- `Get(name string) (*Plan, error)`: (Associated with `Planner`) Retrieves a plan by its name from the storage directory.
-- `Save(plan *Plan) error`: (Associated with `Planner`) Writes the given plan to a JSON file in the planner's storage directory.
-- `Remove(planNames []string) map[string]error`: (Associated with `Planner`) Attempts to delete plans by their names from the storage directory. Returns a map of plan names to errors (nil on success).
-- `List() ([]PlanInfo, error)`: (Associated with `Planner`) Returns summary information for all plans in the storage directory.
-- `Compact() error`: (Associated with `Planner`) Removes all completed plans (where all steps are "DONE") from the storage directory.
+- `Create(name string) (*Plan, error)`: (Associated with `Planner`) Creates a new plan in the database with the given name (which serves as its ID). Returns an in-memory `Plan` object.
+- `Get(name string) (*Plan, error)`: (Associated with `Planner`) Retrieves a plan and its associated steps and acceptance criteria by its name (ID) from the database.
+- `Save(plan *Plan) error`: (Associated with `Planner`) Persists the state of the given `Plan` object (including its steps and acceptance criteria) to the database. This involves updating existing records or inserting new ones as needed.
+- `Remove(planNames []string) map[string]error`: (Associated with `Planner`) Attempts to delete plans (and their associated steps/criteria due to cascading deletes) by their names (IDs) from the database. Returns a map of plan names to errors (nil on success).
+- `List() ([]PlanInfo, error)`: (Associated with `Planner`) Returns summary information (name, status, task counts) for all plans stored in the database.
+- `Compact() error`: (Associated with `Planner`) Removes all completed plans (where all steps are "DONE" or the plan has no steps) from the database.
 
 - `Inspect() string`: (Method of `Plan`) Returns a string representation of the plan, formatted for display, showing each step's number, status, ID, description, and acceptance criteria.
 - `NextStep() *Step`: (Method of `Plan`) Returns the first step in the plan that is not marked as "DONE". Returns `nil` if all steps are completed.
@@ -67,36 +66,14 @@ The `PlanInfo` struct holds summary information about a plan, used by the `Plann
 
 ## Internal Storage
 
-Plans are stored as individual JSON files within the `storageDir` provided when a `Planner` is instantiated.
+Plans are stored in a SQLite database. The database schema defines how plans, steps, and their acceptance criteria are organized.
 
-- **Filename**: Each plan is stored in a file named `<plan_name>.json` (e.g., `main.json`, `feature-x.json`). The `plan_name` corresponds to the `ID` field of the `Plan` struct.
-- **Format**: The JSON file stores a serialized version of the plan. To handle Go's private fields during JSON marshaling/unmarshaling, the module uses internal `serializablePlan` and `serializableStep` structs. These structs have exported fields (e.g., `Id` instead of `id`) that match the JSON structure.
-  - `serializablePlan`: Contains `ID` and `Steps` (a slice of `*serializableStep`).
-  - `serializableStep`: Contains `Id`, `Description`, `Status`, and `Acceptance`.
-- **Serialization/Deserialization**:
-  - When saving a plan (`Planner.Save`), the `Plan` and its `Step`s are converted to `serializablePlan` and `serializableStep`s before being marshaled to JSON.
-  - When retrieving a plan (`Planner.Get`), the JSON data is first unmarshaled into `serializablePlan` and `serializableStep`s, and then converted back to `Plan` and `Step`s with their respective unexported fields populated.
+-   **Database File**: The planner uses a single SQLite database file, the path to which is provided when a `Planner` is instantiated.
+-   **Schema**: The database schema consists of three main tables:
+    -   `plans`: Stores high-level information about each plan, primarily its unique `id`.
+    -   `steps`: Stores details for each step within a plan, including its `id`, `plan_id` (linking to the `plans` table), `description`, `status`, and `step_order`.
+    -   `step_acceptance_criteria`: Stores each acceptance criterion for a step, linking to the `steps` table via `plan_id` and `step_id`, and includes the `criterion` text and its `criterion_order`.
+-   **Relationships**: Foreign key constraints are used to maintain integrity between these tables (e.g., deleting a plan cascades to delete its steps and their criteria).
+-   **Schema Definition**: The complete schema is defined in `schema.sql` within the planner module directory. This file is used to initialize the database tables if they do not already exist.
 
-### Example JSON Structure (`myplan.json`)
-
-```json
-{
-  "ID": "myplan",
-  "Steps": [
-    {
-      "Id": "step1",
-      "Description": "This is the first step.",
-      "Status": "TODO",
-      "Acceptance": ["Criterion A for step 1", "Criterion B for step 1"]
-    },
-    {
-      "Id": "step2",
-      "Description": "This is the second step, already done.",
-      "Status": "DONE",
-      "Acceptance": []
-    }
-  ]
-}
-```
-
-This structure allows for easy human readability and machine parsing of plan files. The use of intermediate serializable structs is a common Go pattern to control JSON representation independently of the primary domain model structs, especially when dealing with unexported fields or needing different field names in the JSON.
+Data is read from and written to these tables using SQL queries executed by the planner methods.

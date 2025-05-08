@@ -1,23 +1,24 @@
 package planner
 
 import (
-	"encoding/json"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	_ "github.com/mattn/go-sqlite3" // SQLite driver
 )
 
-// Planner manages plans.
+// Planner manages plans using a SQLite database.
 type Planner struct {
-	storageDir string
+	db *sql.DB
 }
 
 // Plan represents a collection of steps.
 type Plan struct {
 	ID    string  `json:"id"` // Unique identifier for the plan, e.g., "active"
 	Steps []*Step `json:"steps"`
-	name  string  // internal name of the plan, typically the filename without extension
 }
 
 // PlanInfo holds summary information about a plan.
@@ -29,84 +30,164 @@ type PlanInfo struct {
 	CompletedTasks int    `json:"completed_tasks"`
 }
 
-// serializablePlan is an internal struct used for JSON marshaling/unmarshaling.
-// It has exported fields corresponding to the Plan struct.
-type serializablePlan struct {
-	ID    string              `json:"id"`
-	Steps []*serializableStep `json:"steps"`
-}
-
 // Step represents a single task in a plan.
 type Step struct {
 	id          string   `json:"id"` // Short identifier, e.g., "add-tests"
 	description string   `json:"description"`
 	status      string   `json:"status"` // "DONE" or "TODO"
 	acceptance  []string `json:"acceptance"`
+	stepOrder   int      // Internal field to keep track of order from DB
 }
 
-// serializableStep is an internal struct used for JSON marshaling/unmarshaling.
-// It has exported fields corresponding to the Step struct.
-type serializableStep struct {
-	Id          string   `json:"id"`
-	Description string   `json:"description"`
-	Status      string   `json:"status"`
-	Acceptance  []string `json:"acceptance"`
-}
-
-// New creates a new Planner instance.
-// It ensures the storage directory exists.
-// Returns an error if the directory cannot be created.
-func New(storageDir string) (*Planner, error) {
-	// Ensure the storage directory exists. os.MkdirAll is idempotent.
-	if err := os.MkdirAll(storageDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create storage directory %s: %w", storageDir, err)
+// New creates a new Planner instance connected to a SQLite database.
+// It ensures the database and necessary tables are initialized.
+// databasePath specifies the path to the SQLite database file.
+func New(databasePath string) (*Planner, error) {
+	// Ensure the directory for the database file exists.
+	dbDir := filepath.Dir(databasePath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory for database %s: %w", dbDir, err)
 	}
+
+	db, err := sql.Open("sqlite3", databasePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database at %s: %w", databasePath, err)
+	}
+
+	// Enable foreign key constraints
+	_, err = db.Exec("PRAGMA foreign_keys = ON;")
+	if err != nil {
+		db.Close() // Close the DB if PRAGMA fails
+		return nil, fmt.Errorf("failed to enable foreign key constraints: %w", err)
+	}
+
+	// Read schema.sql file
+	// Assuming schema.sql is in the same directory as this planner.go file.
+	// For a real application, this path might need to be configurable or embedded.
+	schemaPath := filepath.Join(filepath.Dir(databasePath), "schema.sql") // Adjusted to be relative to db path for now
+	if _, err := os.Stat(schemaPath); os.IsNotExist(err) {
+		// If schema.sql is not found next to db, try to find it next to the executable or in `planner/schema.sql`
+		exePath, _ := os.Executable()
+		schemaPath = filepath.Join(filepath.Dir(exePath), "planner", "schema.sql")
+		if _, err := os.Stat(schemaPath); os.IsNotExist(err) {
+			schemaPath = "planner/schema.sql" // Fallback for tests or specific structures
+		}
+	}
+
+	schemaSQL, err := os.ReadFile(schemaPath)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to read schema file %s: %w", schemaPath, err)
+	}
+
+	// Execute schema
+	_, err = db.Exec(string(schemaSQL))
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to execute schema: %w", err)
+	}
+
 	return &Planner{
-		storageDir: storageDir,
+		db: db,
 	}, nil
 }
 
-// Create initializes a new Plan in memory with the given name.
+// Close closes the database connection.
+// It is the caller's responsibility to close the planner when done.
+func (p *Planner) Close() error {
+	if p.db != nil {
+		return p.db.Close()
+	}
+	return nil
+}
+
+// Create inserts a new plan into the 'plans' table and returns an in-memory Plan object.
 // The ID of the plan is set to its name.
-// The plan is not persisted until Save is called.
-func (p *Planner) Create(name string) *Plan {
+func (p *Planner) Create(name string) (*Plan, error) {
+	if name == "" {
+		return nil, fmt.Errorf("plan name cannot be empty")
+	}
+
+	_, err := p.db.Exec("INSERT INTO plans (id) VALUES (?)", name)
+	if err != nil {
+		// Check if the error is due to a unique constraint violation (plan already exists)
+		// This error message might be SQLite specific.
+		// For more robust error handling, consider using specific error types if the driver provides them.
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return nil, fmt.Errorf("plan with name '%s' already exists", name)
+		}
+		return nil, fmt.Errorf("failed to insert plan '%s' into database: %w", name, err)
+	}
+
 	return &Plan{
 		ID:    name,
 		Steps: []*Step{},
-		name:  name, // Also set the internal name for saving
-	}
+	}, nil
 }
 
-// Get retrieves a plan by its name from the storage directory.
-// The plan name corresponds to the filename without the .json extension.
+// Get retrieves a plan and its steps from the database.
 func (p *Planner) Get(name string) (*Plan, error) {
-	planPath := filepath.Join(p.storageDir, fmt.Sprintf("%s.json", name))
-	data, err := os.ReadFile(planPath)
+	var planID string
+	err := p.db.QueryRow("SELECT id FROM plans WHERE id = ?", name).Scan(&planID)
 	if err != nil {
-		// Handle file not found specifically? Or just return the error?
-		// For now, just return the error.
-		return nil, fmt.Errorf("failed to read plan file %s: %w", planPath, err)
-	}
-
-	// Unmarshal into the serializable format first
-	var sPlan serializablePlan
-	if err := json.Unmarshal(data, &sPlan); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal plan data %s: %w", name, err)
-	}
-
-	// Convert serializablePlan back to Plan
-	plan := &Plan{
-		ID:    sPlan.ID,
-		Steps: make([]*Step, len(sPlan.Steps)),
-		name:  name, // Assign internal name from the Get parameter
-	}
-	for i, sStep := range sPlan.Steps {
-		plan.Steps[i] = &Step{
-			id:          sStep.Id,
-			description: sStep.Description,
-			status:      sStep.Status,
-			acceptance:  sStep.Acceptance,
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("plan with name '%s' not found", name)
 		}
+		return nil, fmt.Errorf("failed to query plan '%s': %w", name, err)
+	}
+
+	plan := &Plan{
+		ID:    planID,
+		Steps: []*Step{},
+	}
+
+	rows, err := p.db.Query("SELECT id, description, status, step_order FROM steps WHERE plan_id = ? ORDER BY step_order ASC", planID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query steps for plan '%s': %w", name, err)
+	}
+	defer rows.Close()
+
+	// Use a map to temporarily store steps by ID for efficient lookup when adding acceptance criteria
+	stepsByID := make(map[string]*Step)
+
+	for rows.Next() {
+		step := &Step{}
+		err := rows.Scan(&step.id, &step.description, &step.status, &step.stepOrder)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan step for plan '%s': %w", name, err)
+		}
+		step.acceptance = []string{} // Initialize acceptance criteria slice
+		plan.Steps = append(plan.Steps, step)
+		stepsByID[step.id] = step // Store step by ID for later lookup
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating steps for plan '%s': %w", name, err)
+	}
+
+	// Now, fetch acceptance criteria for each step
+	// Iterate over the plan.Steps to maintain the order from the database query
+	for _, step := range plan.Steps {
+		acRows, err := p.db.Query("SELECT criterion FROM step_acceptance_criteria WHERE step_id = ? AND plan_id = ? ORDER BY criterion_order ASC", step.id, planID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query acceptance criteria for step '%s' in plan '%s': %w", step.id, name, err)
+		}
+		// It's important to close acRows in each iteration to prevent resource leaks.
+		// Using defer here might be tricky due to the loop, so manual close is better.
+
+		for acRows.Next() {
+			var acDescription string
+			err := acRows.Scan(&acDescription)
+			if err != nil {
+				acRows.Close() // Ensure closure on error
+				return nil, fmt.Errorf("failed to scan acceptance criterion for step '%s' in plan '%s': %w", step.id, name, err)
+			}
+			step.acceptance = append(step.acceptance, acDescription)
+		}
+		if err = acRows.Err(); err != nil {
+			acRows.Close() // Ensure closure on error
+			return nil, fmt.Errorf("error iterating acceptance criteria for step '%s' in plan '%s': %w", step.id, name, err)
+		}
+		acRows.Close() // Close after successful iteration
 	}
 
 	return plan, nil
@@ -176,36 +257,69 @@ func (step *Step) AcceptanceCriteria() []string {
 	return step.acceptance
 }
 
-// MarkAsCompleted finds a step by its ID and sets its status to "DONE".
-// Returns an error if the step ID is not found.
-func (pl *Plan) MarkAsCompleted(stepID string) error {
-	found := false
-	for _, step := range pl.Steps {
-		if step.id == stepID { // Use field for comparison
-			step.status = "DONE" // Assign to field
-			found = true
-			break
-		}
+// MarkAsCompleted finds a step by its ID within a specific plan and sets its status to "DONE" in the database and in-memory.
+// It also updates the in-memory plan object if provided.
+func (p *Planner) MarkAsCompleted(planID string, stepID string, currentPlan *Plan) error {
+	result, err := p.db.Exec("UPDATE steps SET status = ? WHERE plan_id = ? AND id = ?", "DONE", planID, stepID)
+	if err != nil {
+		return fmt.Errorf("failed to update step '%s' in plan '%s' to DONE: %w", stepID, planID, err)
 	}
-	if !found {
-		return fmt.Errorf("step with ID '%s' not found in plan '%s'", stepID, pl.ID)
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		// This error is less critical for the operation itself but good for diagnostics.
+		return fmt.Errorf("failed to get rows affected after updating step '%s' in plan '%s': %w", stepID, planID, err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("step with ID '%s' not found in plan '%s' in the database", stepID, planID)
+	}
+
+	// Update in-memory plan if provided
+	if currentPlan != nil && currentPlan.ID == planID {
+		found := false
+		for _, step := range currentPlan.Steps {
+			if step.id == stepID {
+				step.status = "DONE"
+				found = true
+				break
+			}
+		}
+		if !found {
+			// This indicates a discrepancy between DB and in-memory, which might be an issue.
+			// For now, we'll just return an error or warning.
+			return fmt.Errorf("step '%s' updated in DB but not found in provided in-memory plan '%s'", stepID, planID)
+		}
 	}
 	return nil
 }
 
-// MarkAsIncomplete finds a step by its ID and sets its status to "TODO".
-// Returns an error if the step ID is not found.
-func (pl *Plan) MarkAsIncomplete(stepID string) error {
-	found := false
-	for _, step := range pl.Steps {
-		if step.id == stepID { // Use field for comparison
-			step.status = "TODO" // Assign to field
-			found = true
-			break
-		}
+// MarkAsIncomplete finds a step by its ID  within a specific plan and sets its status to "TODO" in the database and in-memory.
+// It also updates the in-memory plan object if provided.
+func (p *Planner) MarkAsIncomplete(planID string, stepID string, currentPlan *Plan) error {
+	result, err := p.db.Exec("UPDATE steps SET status = ? WHERE plan_id = ? AND id = ?", "TODO", planID, stepID)
+	if err != nil {
+		return fmt.Errorf("failed to update step '%s' in plan '%s' to TODO: %w", stepID, planID, err)
 	}
-	if !found {
-		return fmt.Errorf("step with ID '%s' not found in plan '%s'", stepID, pl.ID)
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected after updating step '%s' in plan '%s': %w", stepID, planID, err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("step with ID '%s' not found in plan '%s' in the database", stepID, planID)
+	}
+
+	// Update in-memory plan if provided
+	if currentPlan != nil && currentPlan.ID == planID {
+		found := false
+		for _, step := range currentPlan.Steps {
+			if step.id == stepID {
+				step.status = "TODO"
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("step '%s' updated in DB but not found in provided in-memory plan '%s'", stepID, planID)
+		}
 	}
 	return nil
 }
@@ -305,135 +419,265 @@ func (pl *Plan) IsCompleted() bool {
 	return pl.NextStep() == nil // If NextStep is nil, all steps are DONE
 }
 
-// List returns summary information for all plans in the storage directory.
+// List retrieves summary information for all plans from the database.
 func (p *Planner) List() ([]PlanInfo, error) {
-	files, err := os.ReadDir(p.storageDir)
+	rows, err := p.db.Query(`
+        SELECT 
+            p.id, 
+            COUNT(s.id),
+            SUM(CASE WHEN s.status = 'DONE' THEN 1 ELSE 0 END)
+        FROM plans p
+        LEFT JOIN steps s ON p.id = s.plan_id
+        GROUP BY p.id
+    `)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read plan storage directory %s: %w", p.storageDir, err)
+		return nil, fmt.Errorf("failed to query plan summaries: %w", err)
 	}
+	defer rows.Close()
 
 	var plansInfo []PlanInfo
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
-			planName := strings.TrimSuffix(file.Name(), ".json")
+	for rows.Next() {
+		var info PlanInfo
+		var totalTasks sql.NullInt64     // Use NullInt64 for COUNT which can be 0 -> NULL
+		var completedTasks sql.NullInt64 // Use NullInt64 for SUM which can be NULL if no rows
 
-			plan, err := p.Get(planName) // Load the plan to get its details
-			if err != nil {
-				// Log the error and skip this plan, or return immediately?
-				// For now, let's log and continue, so a single corrupted plan doesn't break the whole list.
-				// Consider making this behavior configurable or returning partial results + an error list.
-				fmt.Fprintf(os.Stderr, "warning: failed to load plan '%s' for listing: %v\n", planName, err)
-				continue
-			}
-
-			totalTasks := len(plan.Steps)
-			completedTasks := 0
-			for _, step := range plan.Steps {
-				if strings.ToUpper(step.status) == "DONE" {
-					completedTasks++
-				}
-			}
-
-			status := "TODO"
-			if plan.IsCompleted() {
-				status = "DONE"
-			}
-
-			plansInfo = append(plansInfo, PlanInfo{
-				Name:           planName,
-				Status:         status,
-				TotalTasks:     totalTasks,
-				CompletedTasks: completedTasks,
-			})
+		if err := rows.Scan(&info.Name, &totalTasks, &completedTasks); err != nil {
+			return nil, fmt.Errorf("failed to scan plan summary: %w", err)
 		}
+
+		info.TotalTasks = int(totalTasks.Int64)         // Assign, defaults to 0 if NULL
+		info.CompletedTasks = int(completedTasks.Int64) // Assign, defaults to 0 if NULL
+
+		if info.TotalTasks > 0 && info.CompletedTasks == info.TotalTasks {
+			info.Status = "DONE"
+		} else {
+			info.Status = "TODO"
+		}
+		plansInfo = append(plansInfo, info)
 	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating plan summaries: %w", err)
+	}
+
 	return plansInfo, nil
 }
 
-// Save writes the given plan to a JSON file in the planner's storage directory.
-// The filename is derived from the plan's internal name field.
+// Save persists changes to a plan and its steps in the database using a transaction.
 func (p *Planner) Save(plan *Plan) error {
-	if plan.name == "" {
-		// This case should ideally be prevented by how Plan objects are created/retrieved.
-		// If ID is guaranteed to be filename-safe and unique, could use that as a fallback.
-		return fmt.Errorf("plan has no name, cannot determine save path")
+	tx, err := p.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	planPath := filepath.Join(p.storageDir, fmt.Sprintf("%s.json", plan.name))
+	defer tx.Rollback() // Rollback if not committed
 
-	// Convert Plan to serializablePlan
-	sPlan := serializablePlan{
-		ID:    plan.ID,
-		Steps: make([]*serializableStep, len(plan.Steps)),
+	// In a real application, you might update a 'last_modified' timestamp in the 'plans' table here.
+	// For now, we assume the plan record itself (just an ID) doesn\'t change once created.
+
+	// --- Synchronize steps --- //
+
+	// Get existing step IDs from the DB for this plan
+	rows, err := tx.Query("SELECT id FROM steps WHERE plan_id = ?", plan.ID)
+	if err != nil {
+		return fmt.Errorf("failed to query existing steps for plan '%s': %w", plan.ID, err)
 	}
-	for i, step := range plan.Steps {
-		sPlan.Steps[i] = &serializableStep{
-			Id:          step.id,
-			Description: step.description,
-			Status:      step.status,
-			Acceptance:  step.acceptance,
+	dbStepIDs := make(map[string]bool)
+	for rows.Next() {
+		var stepID string
+		if err := rows.Scan(&stepID); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to scan existing step ID: %w", err)
+		}
+		dbStepIDs[stepID] = true
+	}
+	rows.Close()                      // Important to close rows before further operations on tx
+	if err = rows.Err(); err != nil { // Check for errors during iteration
+		return fmt.Errorf("error iterating existing step IDs: %w", err)
+	}
+
+	// Identify steps to delete, update, or insert
+	planStepIDs := make(map[string]bool)
+	for _, step := range plan.Steps {
+		planStepIDs[step.id] = true
+	}
+
+	// Delete steps not in the current plan.Steps
+	for dbStepID := range dbStepIDs {
+		if !planStepIDs[dbStepID] {
+			// Delete acceptance criteria for the step first (due to foreign key)
+			_, err = tx.Exec("DELETE FROM step_acceptance_criteria WHERE plan_id = ? AND step_id = ?", plan.ID, dbStepID)
+			if err != nil {
+				return fmt.Errorf("failed to delete old acceptance criteria for step '%s' in plan '%s': %w", dbStepID, plan.ID, err)
+			}
+			// Then delete the step itself
+			_, err = tx.Exec("DELETE FROM steps WHERE plan_id = ? AND id = ?", plan.ID, dbStepID)
+			if err != nil {
+				return fmt.Errorf("failed to delete step '%s' from plan '%s': %w", dbStepID, plan.ID, err)
+			}
 		}
 	}
 
-	data, err := json.MarshalIndent(sPlan, "", "  ") // Marshal the serializable version
-	if err != nil {
-		return fmt.Errorf("failed to marshal plan %s for saving: %w", plan.name, err)
+	// Update existing steps or insert new ones
+	for i, step := range plan.Steps {
+		step.stepOrder = i      // Ensure stepOrder is current
+		if dbStepIDs[step.id] { // If step exists in DB, update it
+			_, err = tx.Exec("UPDATE steps SET description = ?, status = ?, step_order = ? WHERE plan_id = ? AND id = ?",
+				step.description, step.status, step.stepOrder, plan.ID, step.id)
+			if err != nil {
+				return fmt.Errorf("failed to update step '%s' in plan '%s': %w", step.id, plan.ID, err)
+			}
+		} else { // Otherwise, insert it
+			_, err = tx.Exec("INSERT INTO steps (id, plan_id, description, status, step_order) VALUES (?, ?, ?, ?, ?)",
+				step.id, plan.ID, step.description, step.status, step.stepOrder)
+			if err != nil {
+				return fmt.Errorf("failed to insert step '%s' into plan '%s': %w", step.id, plan.ID, err)
+			}
+		}
+
+		// --- Synchronize acceptance criteria for this step --- //
+		// Delete all existing criteria for the current step first
+		_, err = tx.Exec("DELETE FROM step_acceptance_criteria WHERE plan_id = ? AND step_id = ?", plan.ID, step.id)
+		if err != nil {
+			return fmt.Errorf("failed to delete old acceptance criteria for step '%s' in plan '%s': %w", step.id, plan.ID, err)
+		}
+
+		// Insert current acceptance criteria for the step
+		for j, acText := range step.acceptance {
+			_, err = tx.Exec("INSERT INTO step_acceptance_criteria (plan_id, step_id, criterion_order, criterion) VALUES (?, ?, ?, ?)",
+				plan.ID, step.id, j, acText)
+			if err != nil {
+				return fmt.Errorf("failed to insert acceptance criterion for step '%s' in plan '%s': %w", step.id, plan.ID, err)
+			}
+		}
 	}
 
-	if err := os.WriteFile(planPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write plan file %s: %w", planPath, err)
-	}
-
-	return nil
+	return tx.Commit()
 }
 
-// Remove attempts to delete plans by their names.
-// It returns a map where keys are plan names and values are errors (nil on success).
+// Remove deletes plans from the database by their names (IDs).
+// It relies on "ON DELETE CASCADE" foreign key constraints to remove associated steps and criteria.
+// It returns a map where keys are plan names and values are errors encountered during deletion (nil on success).
 func (p *Planner) Remove(planNames []string) map[string]error {
 	results := make(map[string]error)
-	for _, name := range planNames {
-		planPath := filepath.Join(p.storageDir, fmt.Sprintf("%s.json", name))
-		err := os.Remove(planPath)
-		// If os.Remove returns an error, it could be because the file doesn't exist (os.ErrNotExist)
-		// or due to other issues like permissions. We store the error as is.
-		results[name] = err
+	tx, err := p.db.Begin() // Start a transaction for potentially multiple deletes
+	if err != nil {
+		// If we can't even begin a transaction, report a general error.
+		// We can't assign it to a specific plan name.
+		// Alternatively, return a single error here.
+		results["_"] = fmt.Errorf("failed to begin transaction for remove: %w", err)
+		return results
 	}
+	defer tx.Rollback() // Ensure rollback on error
+
+	stmt, err := tx.Prepare("DELETE FROM plans WHERE id = ?")
+	if err != nil {
+		results["_"] = fmt.Errorf("failed to prepare delete statement: %w", err)
+		return results
+	}
+	defer stmt.Close()
+
+	for _, name := range planNames {
+		result, err := stmt.Exec(name)
+		if err != nil {
+			results[name] = fmt.Errorf("failed to execute delete for plan '%s': %w", name, err)
+			continue // Continue trying to delete others
+		}
+		rowsAffected, _ := result.RowsAffected() // Check if the plan actually existed
+		if rowsAffected == 0 {
+			// Optionally report this as an error or warning
+			results[name] = fmt.Errorf("plan '%s' not found for deletion", name)
+		} else {
+			results[name] = nil // Mark as success
+		}
+	}
+
+	// Check if any specific errors occurred
+	hasErrors := false
+	for _, err := range results {
+		if err != nil {
+			hasErrors = true
+			break
+		}
+	}
+
+	if !hasErrors {
+		if err := tx.Commit(); err != nil {
+			results["_"] = fmt.Errorf("failed to commit transaction for remove: %w", err)
+			// If commit fails, the actual outcome is uncertain. Mark all non-errored as failed?
+			for name, resErr := range results {
+				if resErr == nil {
+					results[name] = fmt.Errorf("transaction commit failed after successful delete prep: %w", err)
+				}
+			}
+		}
+	} else {
+		// Rollback happens automatically via defer, just return the results map with errors.
+	}
+
 	return results
 }
 
-// Compact removes all completed plans from the storage directory.
-// A plan is considered completed if all its steps are marked as "DONE".
+// Compact removes all completed plans from the database.
+// A plan is completed if it has no steps or all its steps are marked as 'DONE'.
 func (p *Planner) Compact() error {
-	files, err := os.ReadDir(p.storageDir)
+	query := `
+        SELECT p.id
+        FROM plans p
+        LEFT JOIN steps s ON p.id = s.plan_id
+        GROUP BY p.id
+        HAVING COUNT(s.id) = 0 OR SUM(CASE WHEN s.status = 'DONE' THEN 1 ELSE 0 END) = COUNT(s.id);
+    `
+	rows, err := p.db.Query(query)
 	if err != nil {
-		return fmt.Errorf("failed to read plan storage directory %s for compacting: %w", p.storageDir, err)
+		return fmt.Errorf("failed to query completed plans for compaction: %w", err)
+	}
+	defer rows.Close()
+
+	var completedPlanIDs []string
+	for rows.Next() {
+		var planID string
+		if err := rows.Scan(&planID); err != nil {
+			return fmt.Errorf("failed to scan completed plan ID: %w", err)
+		}
+		completedPlanIDs = append(completedPlanIDs, planID)
+	}
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("error iterating completed plan IDs: %w", err)
+	}
+	rows.Close() // Close rows before starting transaction
+
+	if len(completedPlanIDs) == 0 {
+		return nil // Nothing to compact
 	}
 
-	var compactedCount int // To keep track of how many plans are removed.
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
-			planName := strings.TrimSuffix(file.Name(), ".json")
-			plan, err := p.Get(planName) // Use existing Get method to load plan details
-			if err != nil {
-				// Log error and continue, so a single corrupted/unreadable plan doesn't stop compaction.
-				fmt.Fprintf(os.Stderr, "warning: failed to load plan '%s' during compact: %v\n", planName, err)
-				continue
-			}
+	// Use the existing Remove method which handles transactions and cascading deletes
+	// The Remove method returns a map of errors, but Compact just returns a single error.
+	// We'll check the map for any errors.
+	removeResults := p.Remove(completedPlanIDs)
 
-			if plan.IsCompleted() { // Use existing IsCompleted method
-				planPath := filepath.Join(p.storageDir, file.Name())
-				if err := os.Remove(planPath); err != nil {
-					// Log error and continue. Perhaps the file was removed by another process or permissions issue.
-					fmt.Fprintf(os.Stderr, "warning: failed to remove completed plan file '%s': %v\n", planPath, err)
-					continue
+	var firstError error
+	var errorCount int
+	for planID, err := range removeResults {
+		if err != nil {
+			errorCount++
+			if firstError == nil {
+				// Capture the first error encountered
+				if planID == "_" { // Check for transaction level error from Remove
+					firstError = err
+				} else {
+					firstError = fmt.Errorf("failed to remove plan '%s': %w", planID, err)
 				}
-				compactedCount++
-				// Optional: Log successful removal for verbosity if desired.
-				// fmt.Printf("Compacted (removed) completed plan: %s\n", planName)
 			}
+			// Optionally log subsequent errors if desired
+			// fmt.Fprintf(os.Stderr, "warning: error during compact removal of plan '%s': %v\n", planID, err)
 		}
 	}
 
-	// Optional: Log overall result for verbosity if desired.
-	// fmt.Printf("Compaction complete. Removed %d completed plan(s).\n", compactedCount)
+	if firstError != nil {
+		return fmt.Errorf("encountered %d error(s) during compaction, first error: %w", errorCount, firstError)
+	}
+
+	// Optional: Log success
+	// fmt.Printf("Compaction complete. Removed %d completed plan(s).\n", len(completedPlanIDs))
 	return nil
 }

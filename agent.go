@@ -416,7 +416,7 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 		if turnCacheName != "" {
 			// If using cache, send no explicit conversation history in the GenerateContent call itself,
 			// as it's already in turnCacheName.
-			conversationToSend = nil
+			conversationToSend = conversation[agent.cachedHistoryCount:]
 		} else {
 			// If not using cache, send the provided conversation history.
 			conversationToSend = conversation
