@@ -352,7 +352,7 @@ func (agent *Agent) geminiMessage(fmtStr string, value ...any) {
 func (agent *Agent) skipMessage(fmtStr string, value ...any) {
 	// Use a distinct color for skipped messages, e.g., yellow or cyan.
 	// Let's use cyan (96m) for visibility.
-	fmt.Printf("\\033[96mSkip   [%d]\\033[0m: "+fmtStr+"\\n", append([]any{len(agent.history)}, value...)...)
+	fmt.Printf("\u001b[96mSkip   [%d]\u001b[0m: "+fmtStr+"\\n", append([]any{len(agent.history)}, value...)...)
 }
 
 func (agent *Agent) trace(direction string, arg any) {
