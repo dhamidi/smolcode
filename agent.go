@@ -93,74 +93,21 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		// cachedContent and systemPromptModTime are zero initially
 	}
 
-	// Cache Management
-	systemPromptFilePath := "smolcode.md" // Define this once
-	currentSysPromptModTime := time.Time{}
-	fileInfo, err := os.Stat(systemPromptFilePath)
-	if err == nil {
-		currentSysPromptModTime = fileInfo.ModTime()
-	} else {
-		fmt.Fprintf(os.Stderr, "Warning: could not stat %s for cache invalidation: %v\n", systemPromptFilePath, err)
-	}
-
-	// TODO: In a persistent agent scenario, agent.cachedContent and agent.systemPromptModTime would be loaded.
-	// For now, they are always new. If they were loaded, this is where invalidation would be more meaningful.
-	// This example invalidation logic will run, but likely won't find an "old" cache to delete unless the agent object was persisted.
-
-	if !agent.systemPromptModTime.IsZero() && !currentSysPromptModTime.IsZero() && currentSysPromptModTime.After(agent.systemPromptModTime) {
-		if agent.cachedContent != "" {
-			fmt.Printf("System prompt %s changed. Invalidating and deleting old cache: %s for agent %s\n", systemPromptFilePath, agent.cachedContent, agent.name)
-			_, delErr := agent.client.Caches.Delete(context.Background(), agent.cachedContent, nil)
-			if delErr != nil {
-				fmt.Fprintf(os.Stderr, "Warning: could not delete cached content %s for agent %s: %v\n", agent.cachedContent, agent.name, delErr)
-			} else {
-				fmt.Printf("Successfully deleted old cache: %s for agent %s\n", agent.cachedContent, agent.name)
-			}
-			agent.cachedContent = "" // Mark for recreation
-		}
-	}
-
-	// Create cached content if needed (either no cache, or it was invalidated)
-	if agent.cachedContent == "" && (agent.systemInstruction != "" || len(agent.tools) > 0) {
-		cacheConfig := &genai.CreateCachedContentConfig{
-			DisplayName: fmt.Sprintf("smolcode-cache-%s-%d", agent.name, time.Now().UnixNano()), // Add timestamp for uniqueness
-			// TTL: 24 * time.Hour, // Example TTL
-		}
-		if agent.systemInstruction != "" {
-			cacheConfig.SystemInstruction = agent.systemPrompt()
-		}
-		if len(agent.tools) > 0 {
-			cacheConfig.Tools = []*genai.Tool{agent.tools.List()}
-		}
-
-		cachedContentInstance, createErr := agent.client.Caches.Create(context.Background(), agent.modelName, cacheConfig)
-		if createErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not create cached content for agent %s: %v\n", agent.name, createErr)
-		} else {
-			agent.cachedContent = cachedContentInstance.Name
-			if !currentSysPromptModTime.IsZero() { // Only update mod time if we successfully statted the file
-				agent.systemPromptModTime = currentSysPromptModTime
-			}
-			fmt.Printf("Created and using cached content: %s (System Prompt ModTime: %s) for agent %s\n", agent.cachedContent, agent.systemPromptModTime.Format(time.RFC3339), agent.name)
-		}
-	} else if agent.cachedContent != "" {
-		fmt.Printf("Using existing cached content: %s (System Prompt ModTime: %s) for agent %s\n", agent.cachedContent, agent.systemPromptModTime.Format(time.RFC3339), agent.name)
-	}
+	// Caching logic has been moved to runInference
 
 	return agent
 }
 
 type Agent struct {
-	name                string
-	client              *genai.Client
-	getUserMessage      func() (string, bool)
-	tools               ToolBox
-	tracingEnabled      bool
-	systemInstruction   string
-	history             []*genai.Content
-	modelName           string
-	cachedContent       string    // Stores the resource name of the cached content
-	systemPromptModTime time.Time // Stores the modification time of the system prompt when cached
+	name              string
+	client            *genai.Client
+	getUserMessage    func() (string, bool)
+	tools             ToolBox
+	tracingEnabled    bool
+	systemInstruction string
+	history           []*genai.Content
+	modelName         string
+	cachedContent     string // Stores the resource name of the cached content
 }
 
 func (agent *Agent) ChooseModel(modelName string) *Agent {
@@ -324,6 +271,49 @@ func (agent *Agent) trace(direction string, arg any) {
 func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Content) (*genai.GenerateContentResponse, error) {
 	agent.trace(">", conversation)
 
+	// --- Caching Logic Start ---
+	// Create a new cache for the current conversation history for this turn.
+	var turnCacheName string
+	// SystemInstruction and Tools are always included in the turn cache if available.
+	cacheConfig := &genai.CreateCachedContentConfig{
+		DisplayName: fmt.Sprintf("smolcode-turncache-%s-%d", agent.name, time.Now().UnixNano()),
+		TTL:         5 * time.Minute,
+		Model:       agent.modelName, // Model name is required for cache creation
+	}
+
+	if agent.systemInstruction != "" {
+		cacheConfig.SystemInstruction = agent.systemPrompt()
+	}
+	if len(agent.tools) > 0 {
+		cacheConfig.Tools = []*genai.Tool{agent.tools.List()}
+	}
+	// The conversation (history) is added to the *contents* of the cache.
+	if len(conversation) > 0 {
+		cacheConfig.Contents = conversation // Cache the current conversation (history)
+	}
+
+	cachedContentInstance, createErr := agent.client.Caches.Create(ctx, cacheConfig)
+	if createErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not create turn-specific cached content for agent %s: %v\n", agent.name, createErr)
+		// Proceed without this turn's cache if creation fails
+	} else {
+		turnCacheName = cachedContentInstance.Name
+		fmt.Printf("INFO: Created turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+		// Defer deletion of this turn-specific cache
+		defer func() {
+			if turnCacheName != "" {
+				fmt.Printf("INFO: Deleting turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+				_, delErr := agent.client.Caches.Delete(context.Background(), turnCacheName, nil)
+				if delErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: could not delete turn-specific cached content %s for agent %s: %v\n", turnCacheName, agent.name, delErr)
+				} else {
+					fmt.Printf("INFO: Successfully deleted turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
+				}
+			}
+		}()
+	}
+	// --- Caching Logic End ---
+
 	var response *genai.GenerateContentResponse
 	var err error
 
@@ -335,16 +325,19 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 			MaxOutputTokens: 4 * 1024,
 		}
 
-		if agent.cachedContent != "" {
-			config.CachedContent = agent.cachedContent
-			// When using a valid cache, SystemInstruction and Tools from the cache are used.
-			// We don't need to set them again in the config here.
+		if turnCacheName != "" {
+			config.CachedContent = turnCacheName
+			// When using a valid turn-specific cache (turnCacheName is not empty),
+			// SystemInstruction, Tools, and Contents (history) are already part of the cache.
+			// So, we do NOT set them again in the config here for the GenerateContent call.
+			// The conversation argument to GenerateContent will be ignored by the backend if CachedContent is set.
 		} else {
-			// Only set these if not using a cache (e.g., cache creation failed or was skipped)
+			// Only set these if not using a turn-specific cache (e.g., cache creation failed)
 			if len(agent.tools) > 0 {
 				config.Tools = []*genai.Tool{agent.tools.List()}
 			}
 			config.SystemInstruction = agent.systemPrompt()
+			// Note: The 'conversation' argument to GenerateContent will be used directly in this case.
 		}
 
 		agent.trace("GenerateContentConfig", config) // Log the config being used
@@ -502,17 +495,30 @@ func AsJSON(value any) string {
 
 // formatUsageMetadata creates a single-line summary of token usage.
 // It highlights the prompt token count relative to the maximum allowed (1,048,576).
+// It also indicates if cached content was used for the request.
 func formatUsageMetadata(metadata *genai.GenerateContentResponseUsageMetadata) string {
 	if metadata == nil {
 		return "Usage metadata not available."
 	}
 	// The input token limit is 1,048,576
 	limit := 1048576
+	cacheInfo := ""
+	if metadata.CachedContentTokenCount > 0 {
+		// If CachedContentTokenCount is greater than 0, it implies a cache was hit.
+		// The API does not directly return the cache name in UsageMetadata,
+		// but we can infer its use from this field.
+		cacheInfo = fmt.Sprintf(", CachedContentTokens=%d (Cache Hit)", metadata.CachedContentTokenCount)
+	} else if metadata.PromptTokenCount > 0 {
+		// If PromptTokenCount > 0 and CachedContentTokenCount is 0, it implies cache was not used for prompt tokens.
+		cacheInfo = " (Cache Miss/Not Used)"
+	}
+
 	return fmt.Sprintf(
-		"Token Usage: Prompt=%d/%d (%d%%), Candidates=%d, Total=%d",
+		"Token Usage: Prompt=%d/%d (%d%%)%s, Candidates=%d, Total=%d",
 		metadata.PromptTokenCount,
 		limit,
 		(metadata.PromptTokenCount*100)/int32(limit), // Calculate percentage
+		cacheInfo,
 		metadata.CandidatesTokenCount,
 		metadata.TotalTokenCount,
 	)
