@@ -121,7 +121,8 @@ func handlePlanCommand(args []string) {
 		planName := inspectCmd.Arg(0)
 		plan, err := plans.Get(planName)
 		if err != nil {
-			log.Fatalf("Error loading plan '%s': %v", planName, err)
+			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
+			os.Exit(1)
 		}
 		fmt.Println(plan.Inspect())
 
@@ -139,7 +140,8 @@ func handlePlanCommand(args []string) {
 		planName := nextStepCmd.Arg(0)
 		plan, err := plans.Get(planName)
 		if err != nil {
-			log.Fatalf("Error loading plan '%s': %v", planName, err)
+			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
+			os.Exit(1)
 		}
 		next := plan.NextStep()
 		if next == nil {
@@ -178,7 +180,8 @@ func handlePlanCommand(args []string) {
 
 		plan, err := plans.Get(planName)
 		if err != nil {
-			log.Fatalf("Error loading plan '%s': %v", planName, err)
+			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
+			os.Exit(1)
 		}
 
 		if status == "DONE" {
@@ -213,7 +216,8 @@ func handlePlanCommand(args []string) {
 
 		plan, err := plans.Get(planName)
 		if err != nil {
-			log.Fatalf("Error loading plan '%s': %v", planName, err)
+			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
+			os.Exit(1)
 		}
 
 		plan.AddStep(stepID, description, acceptanceCriteria)
@@ -264,7 +268,8 @@ func handlePlanCommand(args []string) {
 
 		plan, err := plans.Get(planName)
 		if err != nil {
-			log.Fatalf("Error loading plan '%s': %v", planName, err)
+			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
+			os.Exit(1)
 		}
 
 		plan.Reorder(newStepOrder) // Call the in-memory reorder
