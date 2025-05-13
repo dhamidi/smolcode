@@ -389,54 +389,6 @@ func (agent *Agent) trace(direction string, arg any) {
 func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Content) (*genai.GenerateContentResponse, error) {
 	agent.trace(">", conversation)
 
-	// --- Caching Logic Start ---
-	// Create a new cache for the current conversation history for this turn.
-	var turnCacheName string
-	// SystemInstruction and Tools are always included in the turn cache if available.
-	cacheConfig := &genai.CreateCachedContentConfig{
-		DisplayName: fmt.Sprintf("smolcode-turncache-%s-%d", agent.name, time.Now().UnixNano()),
-		TTL:         5 * time.Minute,
-		// Model:    agent.modelName, // This was incorrect, Model is part of Caches.Create call
-	}
-
-	if agent.systemInstruction != "" {
-		cacheConfig.SystemInstruction = agent.systemPrompt()
-	}
-	if len(agent.tools) > 0 {
-		cacheConfig.Tools = []*genai.Tool{agent.tools.List()}
-	}
-	// The conversation (history) is added to the *contents* of the cache.
-	if len(conversation) > 0 {
-		cacheConfig.Contents = conversation // Cache the current conversation (history)
-	}
-
-	cachedContentInstance, createErr := agent.client.Caches.Create(ctx, agent.modelName, cacheConfig)
-	if createErr != nil {
-		// fmt.Fprintf(os.Stderr, "Warning: could not create turn-specific cached content for agent %s: %v\n", agent.name, createErr)
-		agent.trace("CacheCreate", map[string]string{"status": "error", "agent": agent.name, "error": createErr.Error()})
-		// Proceed without this turn's cache if creation fails
-	} else {
-		turnCacheName = cachedContentInstance.Name
-		// fmt.Printf("INFO: Created turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
-		agent.trace("CacheCreate", map[string]string{"status": "success", "cacheName": turnCacheName, "agent": agent.name})
-		// Defer deletion of this turn-specific cache
-		defer func() {
-			if turnCacheName != "" {
-				// fmt.Printf("INFO: Deleting turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
-				agent.trace("CacheDeleteAttempt", map[string]string{"cacheName": turnCacheName, "agent": agent.name})
-				_, delErr := agent.client.Caches.Delete(context.Background(), turnCacheName, nil)
-				if delErr != nil {
-					// fmt.Fprintf(os.Stderr, "Warning: could not delete turn-specific cached content %s for agent %s: %v\n", turnCacheName, agent.name, delErr)
-					agent.trace("CacheDelete", map[string]string{"status": "error", "cacheName": turnCacheName, "agent": agent.name, "error": delErr.Error()})
-				} else {
-					// fmt.Printf("INFO: Successfully deleted turn-specific cache: %s for agent %s\n", turnCacheName, agent.name)
-					agent.trace("CacheDelete", map[string]string{"status": "success", "cacheName": turnCacheName, "agent": agent.name})
-				}
-			}
-		}()
-	}
-	// --- Caching Logic End ---
-
 	var response *genai.GenerateContentResponse
 	var err error
 
@@ -448,29 +400,24 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 			MaxOutputTokens: 8 * 1024,
 		}
 
-		if turnCacheName != "" {
-			config.CachedContent = turnCacheName
-			// When using a valid turn-specific cache (turnCacheName is not empty),
-			// SystemInstruction, Tools, and Contents (history) are already part of the cache.
-			// So, we do NOT set them again in the config here for the GenerateContent call.
-			// The conversation argument to GenerateContent will be ignored by the backend if CachedContent is set.
+		var conversationToSend []*genai.Content
+		// Determine if we can use the persistent cache
+		usePersistentCache := agent.cachedContent != "" && agent.cachedHistoryCount > 0 && len(conversation) > agent.cachedHistoryCount
+
+		if usePersistentCache {
+			config.CachedContent = agent.cachedContent
+			// SystemInstruction and Tools are already part of agent.cachedContent, so they are not set here.
+			conversationToSend = conversation[agent.cachedHistoryCount:]
+			agent.trace("CacheInfo", map[string]string{"status": "using_persistent_cache", "cacheName": agent.cachedContent, "cachedHistoryCount": fmt.Sprintf("%d", agent.cachedHistoryCount), "currentHistoryCount": fmt.Sprintf("%d", len(conversation))})
 		} else {
-			// Only set these if not using a turn-specific cache (e.g., cache creation failed)
+			// No valid persistent cache to use, or history hasn't grown enough.
+			// Send SystemInstruction and Tools explicitly.
 			if len(agent.tools) > 0 {
 				config.Tools = []*genai.Tool{agent.tools.List()}
 			}
 			config.SystemInstruction = agent.systemPrompt()
-			// Note: The 'conversation' argument to GenerateContent will be used directly in this case.
-		}
-
-		var conversationToSend []*genai.Content
-		if turnCacheName != "" {
-			// If using cache, send no explicit conversation history in the GenerateContent call itself,
-			// as it's already in turnCacheName.
-			conversationToSend = conversation[agent.cachedHistoryCount:]
-		} else {
-			// If not using cache, send the provided conversation history.
-			conversationToSend = conversation
+			conversationToSend = conversation // Send the full conversation
+			agent.trace("CacheInfo", map[string]string{"status": "not_using_persistent_cache", "reason": "no valid cache or history not grown", "cachedContent": agent.cachedContent, "cachedHistoryCount": fmt.Sprintf("%d", agent.cachedHistoryCount), "currentHistoryCount": fmt.Sprintf("%d", len(conversation))})
 		}
 		agent.trace("GenerateContentConfig", config) // Log the config being used
 		// Pass conversationToSend instead of the original 'conversation'
