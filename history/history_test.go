@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // newTestDB is a helper to create a temporary SQLite DB file for testing.
@@ -18,22 +18,18 @@ func newTestDB(t *testing.T) (*sql.DB, string, func()) {
 		t.Fatalf("Failed to create temp db file: %v", err)
 	}
 	tempFilePath := tempFile.Name()
-	// Close the file immediately so SQLite can use the path.
-	// The file itself will be cleaned up by t.TempDir().
 	if err := tempFile.Close(); err != nil {
 		t.Fatalf("Failed to close temp db file: %v", err)
 	}
 
-	// Use a DSN that ensures the file is created if it doesn't exist.
 	db, err := sql.Open("sqlite3", tempFilePath)
 	if err != nil {
 		t.Fatalf("Failed to open db at %s: %v", tempFilePath, err)
 	}
 
-	// Apply schema
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY);`)
 	if err != nil {
-		db.Close() // Close before fatalf
+		db.Close()
 		t.Fatalf("Failed to create conversations table in %s: %v", tempFilePath, err)
 	}
 
@@ -46,21 +42,18 @@ func newTestDB(t *testing.T) (*sql.DB, string, func()) {
 		UNIQUE (conversation_id, sequence_number)
 	);`)
 	if err != nil {
-		db.Close() // Close before fatalf
+		db.Close()
 		t.Fatalf("Failed to create messages table in %s: %v", tempFilePath, err)
 	}
 
 	cleanup := func() {
 		db.Close()
-		// os.Remove(tempFilePath) // Not strictly necessary with t.TempDir()
+		// os.Remove(tempFilePath)
 	}
 	return db, tempFilePath, cleanup
 }
 
 func TestSaveTo(t *testing.T) {
-	// newTestDB provides an isolated database and its path
-	// The schema is already applied by newTestDB.
-	// The cleanup function it returns will close the DB.
 	_, tempDbPath, cleanup := newTestDB(t)
 	defer cleanup()
 
@@ -80,20 +73,17 @@ func TestSaveTo(t *testing.T) {
 	conv.Append(msg1)
 	conv.Append(msg2)
 
-	// Call SaveTo with the temporary database path
 	err = SaveTo(conv, tempDbPath)
 	if err != nil {
 		t.Fatalf("SaveTo() failed: %v", err)
 	}
 
-	// Verify database content directly by opening the tempDbPath
 	dbVerify, err := sql.Open("sqlite3", tempDbPath)
 	if err != nil {
 		t.Fatalf("Failed to open database for verification at %s: %v", tempDbPath, err)
 	}
 	defer dbVerify.Close()
 
-	// Verify conversation exists
 	var convIdInDB string
 	err = dbVerify.QueryRow("SELECT id FROM conversations WHERE id = ?", conv.ID).Scan(&convIdInDB)
 	if err != nil {
@@ -103,7 +93,6 @@ func TestSaveTo(t *testing.T) {
 		t.Errorf("Saved conversation ID mismatch: got %s, want %s", convIdInDB, conv.ID)
 	}
 
-	// Verify messages
 	rows, err := dbVerify.Query("SELECT sequence_number, payload FROM messages WHERE conversation_id = ? ORDER BY sequence_number ASC", conv.ID)
 	if err != nil {
 		t.Fatalf("Failed to query messages: %v", err)
@@ -128,7 +117,6 @@ func TestSaveTo(t *testing.T) {
 		t.Fatalf("Incorrect number of messages saved: got %d, want %d", len(messagesInDB), 2)
 	}
 
-	// Verify msg1
 	expectedMsg1JSON, _ := json.Marshal(msg1)
 	var expectedMsg1Map map[string]interface{}
 	json.Unmarshal(expectedMsg1JSON, &expectedMsg1Map)
@@ -137,20 +125,17 @@ func TestSaveTo(t *testing.T) {
 		t.Errorf("Message 0 mismatch. Got: %v, Expected: %v", messagesInDB[0], expectedMsg1Map)
 	}
 
-	// Verify msg2
 	if messagesInDB[1]["text"] != msg2["text"] || messagesInDB[1]["valid"] != msg2["valid"] {
 		t.Errorf("Message 1 mismatch. Got: %v, Expected: %v", messagesInDB[1], msg2)
 	}
 
-	// Test SaveTo again with more messages
 	msg3 := "a simple string for SaveTo"
 	conv.Append(msg3)
-	err = SaveTo(conv, tempDbPath) // Save again to the same temp path
+	err = SaveTo(conv, tempDbPath)
 	if err != nil {
 		t.Fatalf("Second SaveTo() failed: %v", err)
 	}
 
-	// Verify again - expect 3 messages now
 	rows2, err := dbVerify.Query("SELECT payload FROM messages WHERE conversation_id = ? ORDER BY sequence_number ASC", conv.ID)
 	if err != nil {
 		t.Fatalf("Failed to query messages after second save: %v", err)
@@ -195,7 +180,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
-	conv, _ := New() // Assuming New() works, tested above
+	conv, _ := New()
 	conv.Append("hello")
 	if len(conv.Messages) != 1 {
 		t.Fatalf("Append() failed to add first message. Got %d, want %d", len(conv.Messages), 1)
@@ -225,10 +210,9 @@ func TestSave(t *testing.T) {
 	}
 
 	DefaultDatabasePath = tempDbPath
-	// t.Cleanup ensures this runs after the test, even on panic.
 	t.Cleanup(func() {
 		DefaultDatabasePath = originalDbPath
-		os.Remove(tempDbPath) // Clean up the temp db file
+		os.Remove(tempDbPath)
 	})
 
 	conv, err := New()
@@ -246,19 +230,17 @@ func TestSave(t *testing.T) {
 	conv.Append(msg1)
 	conv.Append(msg2)
 
-	err = Save(conv) // This will use the updated DefaultDatabasePath
+	err = Save(conv)
 	if err != nil {
 		t.Fatalf("Save() failed: %v", err)
 	}
 
-	// Verify database content directly by opening DefaultDatabasePath
 	db, err := sql.Open("sqlite3", DefaultDatabasePath)
 	if err != nil {
 		t.Fatalf("Failed to open database for verification at %s: %v", DefaultDatabasePath, err)
 	}
 	defer db.Close()
 
-	// Verify conversation exists
 	var convIdInDB string
 	err = db.QueryRow("SELECT id FROM conversations WHERE id = ?", conv.ID).Scan(&convIdInDB)
 	if err != nil {
@@ -268,7 +250,6 @@ func TestSave(t *testing.T) {
 		t.Errorf("Saved conversation ID mismatch: got %s, want %s", convIdInDB, conv.ID)
 	}
 
-	// Verify messages
 	rows, err := db.Query("SELECT sequence_number, payload FROM messages WHERE conversation_id = ? ORDER BY sequence_number ASC", conv.ID)
 	if err != nil {
 		t.Fatalf("Failed to query messages: %v", err)
@@ -293,7 +274,6 @@ func TestSave(t *testing.T) {
 		t.Fatalf("Incorrect number of messages saved: got %d, want %d", len(messagesInDB), 2)
 	}
 
-	// Verify msg1 (testMessage struct)
 	expectedMsg1JSON, _ := json.Marshal(msg1)
 	var expectedMsg1Map map[string]interface{}
 	json.Unmarshal(expectedMsg1JSON, &expectedMsg1Map)
@@ -302,23 +282,17 @@ func TestSave(t *testing.T) {
 		t.Errorf("Message 0 mismatch. Got: %v, Expected: %v", messagesInDB[0], expectedMsg1Map)
 	}
 
-	// Verify msg2 (map[string]interface{})
 	if messagesInDB[1]["text"] != msg2["text"] || messagesInDB[1]["valid"] != msg2["valid"] {
 		t.Errorf("Message 1 mismatch. Got: %v, Expected: %v", messagesInDB[1], msg2)
 	}
 
-	// Test Save again with more messages
 	msg3 := "a simple string"
 	conv.Append(msg3)
-	err = Save(conv) // Save again
+	err = Save(conv)
 	if err != nil {
 		t.Fatalf("Second Save() failed: %v", err)
 	}
 
-	// Verify again - expect 3 messages now
-	// Re-open the DB or ensure the connection is still valid for this verification.
-	// For simplicity here, assuming db connection is still good or Save reopens.
-	// A robust test might re-open.
 	db2, err := sql.Open("sqlite3", DefaultDatabasePath)
 	if err != nil {
 		t.Fatalf("Failed to open database for second verification: %v", err)

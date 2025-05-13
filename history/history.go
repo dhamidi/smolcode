@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // DefaultDatabasePath is the default path where the history database is stored.
@@ -52,14 +52,12 @@ func initDB(dataSourceName string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// Create conversations table
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY);`)
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
 
-	// Create messages table
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		conversation_id TEXT NOT NULL,
@@ -80,7 +78,7 @@ func initDB(dataSourceName string) (*sql.DB, error) {
 // It saves the conversation ID and all its messages.
 // If messages for this conversation ID already exist, they are cleared and replaced with the current messages.
 func SaveTo(conversation *Conversation, dbPath string) error {
-	db, err := initDB(dbPath) // Use the provided dbPath
+	db, err := initDB(dbPath)
 	if err != nil {
 		return err
 	}
@@ -91,21 +89,18 @@ func SaveTo(conversation *Conversation, dbPath string) error {
 		return err
 	}
 
-	// Insert conversation ID
 	_, err = tx.Exec(`INSERT OR IGNORE INTO conversations (id) VALUES (?);`, conversation.ID)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// Delete existing messages for this conversation
 	_, err = tx.Exec(`DELETE FROM messages WHERE conversation_id = ?;`, conversation.ID)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	// Insert new messages
 	stmt, err := tx.Prepare(`INSERT INTO messages (conversation_id, sequence_number, payload) VALUES (?, ?, ?);`)
 	if err != nil {
 		tx.Rollback()
