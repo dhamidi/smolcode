@@ -445,7 +445,7 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		config := &genai.GenerateContentConfig{
-			MaxOutputTokens: 4 * 1024,
+			MaxOutputTokens: 8 * 1024,
 		}
 
 		if turnCacheName != "" {
