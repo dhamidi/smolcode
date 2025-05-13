@@ -96,8 +96,8 @@ func TestAppend(t *testing.T) {
 
 func TestSave(t *testing.T) {
 	// Create a temporary directory for this test to ensure DefaultDatabasePath is isolated.
-	tempDir := t.TempDir()
-	originalDefaultPath := DefaultDatabasePath // Store original
+	// tempDir := t.TempDir()
+	// originalDefaultPath := DefaultDatabasePath // Store original
 
 	// Point DefaultDatabasePath to a file within the tempDir for this test.
 	// This requires DefaultDatabasePath to be a variable, not a const.
@@ -192,7 +192,7 @@ func TestSave(t *testing.T) {
 	var expectedMsg1Map map[string]interface{}
 	json.Unmarshal(expectedMsg1JSON, &expectedMsg1Map)
 
-	if messagesInDB[0]["Name"] != expectedMsg1Map["Name"] || int(messagesInDB[0]["Value"].(float64)) != int(expectedMsg1Map["Value"].(float64)) {
+	if messagesInDB[0]["name"] != expectedMsg1Map["name"] || int(messagesInDB[0]["value"].(float64)) != int(expectedMsg1Map["value"].(float64)) {
 		t.Errorf("Message 0 mismatch. Got: %v, Expected: %v", messagesInDB[0], expectedMsg1Map)
 	}
 
