@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dhamidi/smolcode/history"
 	"google.golang.org/genai"
 )
 
@@ -94,22 +95,33 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		// cachedContent and systemPromptModTime are zero initially
 	}
 
+	persConv, err := history.New()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not initialize persistent conversation: %v\n", err)
+		// We can decide if we want to return an error here or proceed with a nil persistentConversation
+		// For now, let's proceed with nil if initialization fails, but log the error.
+		agent.persistentConversation = nil
+	} else {
+		agent.persistentConversation = persConv
+	}
+
 	// Caching logic has been moved to runInference
 
 	return agent
 }
 
 type Agent struct {
-	name               string
-	client             *genai.Client
-	getUserMessage     func() (string, bool)
-	tools              ToolBox
-	tracingEnabled     bool
-	systemInstruction  string
-	history            []*genai.Content
-	modelName          string
-	cachedContent      string // Stores the resource name of the cached content
-	cachedHistoryCount int    // Number of history entries in cachedContent
+	name                   string
+	client                 *genai.Client
+	getUserMessage         func() (string, bool)
+	tools                  ToolBox
+	tracingEnabled         bool
+	systemInstruction      string
+	history                []*genai.Content
+	modelName              string
+	cachedContent          string                // Stores the resource name of the cached content
+	cachedHistoryCount     int                   // Number of history entries in cachedContent
+	persistentConversation *history.Conversation // For storing history in SQLite
 }
 
 func (agent *Agent) ChooseModel(modelName string) *Agent {
@@ -229,6 +241,10 @@ func (agent *Agent) Run(ctx context.Context) error {
 				agent.skipMessage("User input is empty, not adding to history.")
 			} else {
 				agent.history = append(agent.history, userMessage)
+				if err := agent.persistFullConversationToDB(); err != nil {
+					// Log error, but continue. The primary history is in memory.
+					fmt.Fprintf(os.Stderr, "Warning: failed to persist conversation after user message: %v\n", err)
+				}
 			}
 		}
 
@@ -257,6 +273,9 @@ func (agent *Agent) Run(ctx context.Context) error {
 			agent.skipMessage("Model response is empty, not adding to history.")
 		} else {
 			agent.history = append(agent.history, responseMessage)
+			if err := agent.persistFullConversationToDB(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to persist conversation after model response: %v\n", err)
+			}
 		}
 		toolResults := []*genai.Content{}
 
@@ -290,6 +309,9 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 		if len(validToolResults) > 0 {
 			agent.history = append(agent.history, validToolResults...)
+			if err := agent.persistFullConversationToDB(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to persist conversation after tool results: %v\n", err)
+			}
 		}
 	}
 
@@ -624,6 +646,44 @@ func isPartEmpty(part *genai.Part) bool {
 		part.FileData == nil &&
 		part.FunctionCall == nil &&
 		part.FunctionResponse == nil
+}
+
+// persistFullConversationToDB saves the current in-memory agent.history to the SQLite database.
+func (agent *Agent) persistFullConversationToDB() error {
+	if agent.persistentConversation == nil {
+		// This might happen if history.New() failed in the constructor.
+		// Or if we decide not to use persistent history for some agents.
+		agent.trace("PersistToDB", map[string]string{"status": "skipped", "reason": "persistentConversation is nil"})
+		return fmt.Errorf("cannot persist to DB: persistentConversation is nil")
+	}
+
+	// 1. Convert a.history ([]*genai.Content) into an []interface{} slice.
+	//    The history.Conversation.Messages is already []interface{}, so we just need to assign.
+	//    However, history.Append expects individual messages.
+	//    Let's clear existing messages in persistentConversation and re-append all.
+	//    This ensures the DB state matches the in-memory state.
+	agent.persistentConversation.Messages = []interface{}{} // Clear existing messages
+	for _, content := range agent.history {
+		// genai.Content is complex. We need to decide what to store.
+		// For now, let\'s assume we want to store the serializable representation (e.g., JSON).
+		// The history package itself handles the marshaling of messages when Save is called.
+		// So, we just need to append the *genai.Content objects directly.
+		// The history.Conversation.Append method takes interface{}, so *genai.Content is fine.
+		agent.persistentConversation.Append(content)
+	}
+	agent.trace("PersistToDB", map[string]string{"status": "appending_history", "count": fmt.Sprintf("%d", len(agent.history))})
+
+	// 3. Call history.Save(a.persistentConversation) to save to SQLite.
+	err := history.Save(agent.persistentConversation)
+	if err != nil {
+		// 4. Log any errors from history.Save to os.Stderr and return the error.
+		fmt.Fprintf(os.Stderr, "Warning: could not save conversation to DB: %v\\n", err)
+		agent.trace("PersistToDB", map[string]string{"status": "error", "error": err.Error()})
+		return err
+	}
+
+	agent.trace("PersistToDB", map[string]string{"status": "success", "conversation_id": agent.persistentConversation.ID})
+	return nil
 }
 
 func AsJSON(value any) string {
