@@ -28,6 +28,15 @@ func executeSmolcodeCommand(args ...string) (string, error) {
 	return string(output), err
 }
 
+// die prints a formatted error message to stderr and exits with status 1.
+func die(format string, a ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, a...)
+	if !strings.HasSuffix(format, "\n") {
+		fmt.Fprintln(os.Stderr) // Add a newline if not already present
+	}
+	os.Exit(1)
+}
+
 func main() {
 	// Check if the first argument is "plan"
 	if len(os.Args) > 1 && os.Args[1] == "plan" {
@@ -121,8 +130,7 @@ func handlePlanCommand(args []string) {
 		planName := inspectCmd.Arg(0)
 		plan, err := plans.Get(planName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
-			os.Exit(1)
+			die("Error loading plan '%s': %v\n", planName, err)
 		}
 		fmt.Println(plan.Inspect())
 
@@ -140,8 +148,7 @@ func handlePlanCommand(args []string) {
 		planName := nextStepCmd.Arg(0)
 		plan, err := plans.Get(planName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
-			os.Exit(1)
+			die("Error loading plan '%s': %v\n", planName, err)
 		}
 		next := plan.NextStep()
 		if next == nil {
@@ -180,8 +187,7 @@ func handlePlanCommand(args []string) {
 
 		plan, err := plans.Get(planName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
-			os.Exit(1)
+			die("Error loading plan '%s': %v\n", planName, err)
 		}
 
 		if status == "DONE" {
@@ -216,8 +222,7 @@ func handlePlanCommand(args []string) {
 
 		plan, err := plans.Get(planName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
-			os.Exit(1)
+			die("Error loading plan '%s': %v\n", planName, err)
 		}
 
 		plan.AddStep(stepID, description, acceptanceCriteria)
@@ -268,8 +273,7 @@ func handlePlanCommand(args []string) {
 
 		plan, err := plans.Get(planName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading plan '%s': %v\n", planName, err)
-			os.Exit(1)
+			die("Error loading plan '%s': %v\n", planName, err)
 		}
 
 		plan.Reorder(newStepOrder) // Call the in-memory reorder
