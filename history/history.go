@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultDatabasePath is the default path where the history database is stored.
-const DefaultDatabasePath = ".smolcode/history.db"
+var DefaultDatabasePath = ".smolcode/history.db"
 
 // Conversation stores a conversation's ID and its messages.
 type Conversation struct {
@@ -76,11 +76,11 @@ func initDB(dataSourceName string) (*sql.DB, error) {
 	return db, nil
 }
 
-// Save persists the conversation to the database using the DefaultDatabasePath.
+// SaveTo persists the conversation to the database at the specified dbPath.
 // It saves the conversation ID and all its messages.
 // If messages for this conversation ID already exist, they are cleared and replaced with the current messages.
-func Save(conversation *Conversation) error {
-	db, err := initDB(DefaultDatabasePath) // Uses the const
+func SaveTo(conversation *Conversation, dbPath string) error {
+	db, err := initDB(dbPath) // Use the provided dbPath
 	if err != nil {
 		return err
 	}
@@ -127,4 +127,11 @@ func Save(conversation *Conversation) error {
 	}
 
 	return tx.Commit()
+}
+
+// Save persists the conversation to the database using the DefaultDatabasePath.
+// It saves the conversation ID and all its messages.
+// If messages for this conversation ID already exist, they are cleared and replaced with the current messages.
+func Save(conversation *Conversation) error {
+	return SaveTo(conversation, DefaultDatabasePath)
 }
