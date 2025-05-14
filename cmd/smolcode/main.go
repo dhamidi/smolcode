@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/dhamidi/smolcode/memory" // Import the memory package
 
@@ -430,20 +432,87 @@ func handleHistoryCommand(args []string) {
 		// It doesn't have a way to load a conversation.
 		// This is a problem. I should add a step to the plan to address this.
 
-		// For the CLI structure, let's assume a function `LoadConversation(id string, dbPath string)` exists
-		// and `SaveTo` in `history/history.go` will be used.
-		// And that `Conversation.Append` works as expected.
+		conv, err := history.Load(conversationID)
+		if err != nil {
+			log.Fatalf("Error loading conversation '%s': %v", conversationID, err)
+		}
 
-		// To proceed with the CLI part, I'll write the code as if a Load function exists.
-		// I will need to add a new function `Load(id string, dbPath string) (*Conversation, error)` to history/history.go
-		// This is outside the current constraint "Do not touch history/ for this task."
+		// The payload from the command line is a string. We need to decide how to store it.
+		// For now, we'll store it as a simple string. If complex objects are needed later,
+		// this part might need to parse JSON or similar.
+		conv.Append(payload) // Append the raw string payload
 
-		// Given the constraint, I cannot fully implement `append` correctly
-		// as it requires loading a conversation, which `history/history.go` does not support.
-		// I will add a placeholder for now and create a new plan step to implement loading.
+		if err := history.Save(conv); err != nil {
+			log.Fatalf("Error saving updated conversation '%s': %v", conversationID, err)
+		}
+		fmt.Printf("Message appended to conversation %s successfully.\n", conversationID)
 
-		fmt.Printf("Conceptual append: Would load conversation %s, append '%s', and save.\n", conversationID, payload)
-		fmt.Println("NOTE: Full implementation requires a Load function in the history package.")
+	case "list":
+		listCmd := flag.NewFlagSet("list", flag.ExitOnError)
+		listCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go history list\n")
+			fmt.Fprintf(os.Stderr, "Lists all conversations.\n")
+		}
+		listCmd.Parse(remainingArgs)
+		if listCmd.NArg() != 0 {
+			listCmd.Usage()
+			log.Fatal("Error: 'list' does not take any arguments")
+		}
+
+		conversations, err := history.ListConversations(history.DefaultDatabasePath)
+		if err != nil {
+			log.Fatalf("Error listing conversations: %v", err)
+		}
+
+		if len(conversations) == 0 {
+			fmt.Println("No conversations found.")
+		} else {
+			fmt.Println("Conversations:")
+			for _, conv := range conversations {
+				fmt.Printf("  ID: %s, Created: %s, Last Message: %s, Messages: %d\n",
+					conv.ID, conv.CreatedAt.Format(time.RFC3339),
+					conv.LatestMessageTime.Format(time.RFC3339), conv.MessageCount)
+			}
+		}
+
+	case "show":
+		showCmd := flag.NewFlagSet("show", flag.ExitOnError)
+		var conversationID string
+		showCmd.StringVar(&conversationID, "id", "", "ID of the conversation to show")
+		showCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go history show --id <conversation-id>\n")
+			fmt.Fprintf(os.Stderr, "Shows the details of a specific conversation.\n")
+			showCmd.PrintDefaults()
+		}
+		showCmd.Parse(remainingArgs)
+
+		if conversationID == "" {
+			showCmd.Usage()
+			log.Fatal("Error: --id flag is required for 'show'")
+		}
+		if showCmd.NArg() != 0 {
+			showCmd.Usage()
+			log.Fatal("Error: 'show' does not take positional arguments")
+		}
+
+		conv, err := history.Load(conversationID)
+		if err != nil {
+			log.Fatalf("Error loading conversation '%s': %v", conversationID, err)
+		}
+
+		fmt.Printf("Conversation ID: %s\n", conv.ID)
+		fmt.Printf("Created At: %s\n", conv.CreatedAt.Format(time.RFC3339))
+		fmt.Printf("Messages (%d):\n", len(conv.Messages))
+		for i, msg := range conv.Messages {
+			fmt.Printf("  [%d] Created At: %s\n", i, msg.CreatedAt.Format(time.RFC3339))
+			// Attempt to marshal payload to JSON for nice printing. Fallback to %v.
+			payloadJSON, jsonErr := json.MarshalIndent(msg.Payload, "      ", "  ")
+			if jsonErr != nil {
+				fmt.Printf("      Payload: %v\n", msg.Payload)
+			} else {
+				fmt.Printf("      Payload: %s\n", string(payloadJSON))
+			}
+		}
 
 	// Add cases for subcommands later
 	default:
