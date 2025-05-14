@@ -63,7 +63,8 @@ func Code(conversationFilename string, modelName string) {
 		Add(CreateMemoryTool).
 		Add(RecallMemoryTool).
 		Add(PlannerTool).
-		Add(CodegenTool)
+		Add(CodegenTool).
+		Add(DateTool)
 
 	systemPrompt, err := readFileContent("smolcode.md")
 	if err != nil {

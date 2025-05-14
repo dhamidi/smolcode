@@ -145,8 +145,8 @@ func makeAPIRequest(apiKey, instruction string, existingFiles []File) ([]File, e
 
 		// Intermediate struct for unmarshalling file data from API, where contents are string
 		type apiGeneratedFile struct {
-			Path     string `json:"path"`
-			Contents string `json:"contents"`
+			Path     string
+			Contents string
 		}
 
 		var tempGeneratedFiles []apiGeneratedFile
