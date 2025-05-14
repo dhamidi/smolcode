@@ -13,7 +13,7 @@ var CodegenTool = &ToolDefinition{
 	Tool: &genai.Tool{
 		FunctionDeclarations: []*genai.FunctionDeclaration{
 			{
-				Name:        "perform_code_generation",
+				Name:        "generate_code",
 				Description: "Generates code based on an instruction and optional existing files, then writes the generated files to disk. Uses the Inceptionlabs API.",
 				Parameters: &genai.Schema{
 					Type: genai.TypeObject,
