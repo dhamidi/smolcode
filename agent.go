@@ -609,7 +609,7 @@ func (agent *Agent) persistFullConversationToDB() error {
 	//    However, history.Append expects individual messages.
 	//    Let's clear existing messages in persistentConversation and re-append all.
 	//    This ensures the DB state matches the in-memory state.
-	agent.persistentConversation.Messages = []interface{}{} // Clear existing messages
+	agent.persistentConversation.Messages = []*history.Message{} // Clear existing messages
 	for _, content := range agent.history {
 		// genai.Content is complex. We need to decide what to store.
 		// For now, let\'s assume we want to store the serializable representation (e.g., JSON).
