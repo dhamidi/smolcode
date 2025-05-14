@@ -46,10 +46,14 @@ func TestMakeAPIRequest_Success(t *testing.T) {
 		}
 
 		// Send response
-		respFiles := []File{
-			{Path: "new_func.go", Contents: []byte("package main\n\nfunc newFunc() {}")},
+		type testFile struct { // Ad-hoc struct for test response
+			Path     string `json:"path"`
+			Contents string `json:"contents"`
 		}
-		respFilesJSON, _ := json.Marshal(respFiles)
+		respFilesWithStringContents := []testFile{
+			{Path: "new_func.go", Contents: "package main\n\nfunc newFunc() {}"},
+		}
+		respFilesJSON, _ := json.Marshal(respFilesWithStringContents)
 		apiResp := APIResponse{
 			Choices: []APIResponseChoice{
 				{
@@ -99,10 +103,14 @@ func TestMakeAPIRequest_SuccessWithLeadingText(t *testing.T) {
 			t.Errorf("Expected to request /v1/chat/completions, got %s", r.URL.Path)
 		}
 
-		respFiles := []File{
-			{Path: "test_output.go", Contents: []byte("package test")},
+		type testFile struct { // Ad-hoc struct for test response
+			Path     string `json:"path"`
+			Contents string `json:"contents"`
 		}
-		respFilesJSON, _ := json.Marshal(respFiles)
+		respFilesWithStringContents := []testFile{
+			{Path: "test_output.go", Contents: "package test"},
+		}
+		respFilesJSON, _ := json.Marshal(respFilesWithStringContents)
 
 		// Simulate leading text before the JSON block
 		rawContent := fmt.Sprintf("Here is your generated code:\n```json\n%s\n```\nSome trailing remarks.", string(respFilesJSON))

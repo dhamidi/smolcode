@@ -143,10 +143,26 @@ func makeAPIRequest(apiKey, instruction string, existingFiles []File) ([]File, e
 
 		extractedJSON = strings.TrimSpace(extractedJSON) // Final trim for safety
 
-		if err := json.Unmarshal([]byte(extractedJSON), &generatedFiles); err != nil {
+		// Intermediate struct for unmarshalling file data from API, where contents are string
+		type apiGeneratedFile struct {
+			Path     string `json:"path"`
+			Contents string `json:"contents"`
+		}
+
+		var tempGeneratedFiles []apiGeneratedFile
+		if err := json.Unmarshal([]byte(extractedJSON), &tempGeneratedFiles); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal generated files from API response message content: %w. Extracted JSON string was: %s. Original content: %s", err, extractedJSON, apiResp.Choices[0].Message.Content)
 		}
-	} else {
+
+		// Convert to []codegen.File
+		generatedFiles = make([]File, len(tempGeneratedFiles))
+		for i, tgf := range tempGeneratedFiles {
+			generatedFiles[i] = File{
+				Path:     tgf.Path,
+				Contents: []byte(tgf.Contents),
+			}
+		}
+	} else { // This 'else' corresponds to 'if len(apiResp.Choices) > 0 ...'
 		return nil, fmt.Errorf("API response did not contain expected choices or message content. Response body: %s", string(bodyBytes))
 	}
 
