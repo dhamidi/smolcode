@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -13,10 +14,17 @@ import (
 // DefaultDatabasePath is the default path where the history database is stored.
 var DefaultDatabasePath = ".smolcode/history.db"
 
+// Message represents a single message within a conversation, including its content and timestamp.
+type Message struct {
+	Payload   interface{}
+	CreatedAt time.Time
+}
+
 // Conversation stores a conversation's ID and its messages.
 type Conversation struct {
-	ID       string
-	Messages []interface{}
+	ID        string
+	Messages  []*Message
+	CreatedAt time.Time
 }
 
 // New creates a new Conversation with a unique ID and an empty list of messages.
@@ -26,15 +34,20 @@ func New() (*Conversation, error) {
 		return nil, err
 	}
 	return &Conversation{
-		ID:       id.String(),
-		Messages: make([]interface{}, 0),
+		ID:        id.String(),
+		Messages:  make([]*Message, 0),
+		CreatedAt: time.Now(),
 	}, nil
 }
 
 // Append adds a given message to the end of the in-memory message list for the Conversation.
-// The message is stored as an interface{} and will be serialized to JSON upon saving.
-func (c *Conversation) Append(message interface{}) {
-	c.Messages = append(c.Messages, message)
+// The message is wrapped in a Message struct, which includes a timestamp.
+func (c *Conversation) Append(payload interface{}) {
+	msg := &Message{
+		Payload:   payload,
+		CreatedAt: time.Now(),
+	}
+	c.Messages = append(c.Messages, msg)
 }
 
 // initDB ensures the database and tables exist, returning a connection.
@@ -52,7 +65,7 @@ func initDB(dataSourceName string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY);`)
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);`)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -63,6 +76,7 @@ func initDB(dataSourceName string) (*sql.DB, error) {
 		conversation_id TEXT NOT NULL,
 		sequence_number INTEGER NOT NULL,
 		payload BLOB NOT NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id),
 		UNIQUE (conversation_id, sequence_number)
 	);`)
@@ -89,7 +103,7 @@ func SaveTo(conversation *Conversation, dbPath string) error {
 		return err
 	}
 
-	_, err = tx.Exec(`INSERT OR IGNORE INTO conversations (id) VALUES (?);`, conversation.ID)
+	_, err = tx.Exec(`INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?);`, conversation.ID, conversation.CreatedAt)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -101,7 +115,7 @@ func SaveTo(conversation *Conversation, dbPath string) error {
 		return err
 	}
 
-	stmt, err := tx.Prepare(`INSERT INTO messages (conversation_id, sequence_number, payload) VALUES (?, ?, ?);`)
+	stmt, err := tx.Prepare(`INSERT INTO messages (conversation_id, sequence_number, payload, created_at) VALUES (?, ?, ?, ?);`)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -109,12 +123,12 @@ func SaveTo(conversation *Conversation, dbPath string) error {
 	defer stmt.Close()
 
 	for i, msg := range conversation.Messages {
-		payload, jsonErr := json.Marshal(msg)
+		payload, jsonErr := json.Marshal(msg.Payload) // Marshal only the payload
 		if jsonErr != nil {
 			tx.Rollback()
 			return jsonErr
 		}
-		_, err = stmt.Exec(conversation.ID, i, payload)
+		_, err = stmt.Exec(conversation.ID, i, payload, msg.CreatedAt)
 		if err != nil {
 			tx.Rollback()
 			return err
