@@ -11,6 +11,7 @@ import (
 	"github.com/dhamidi/smolcode/memory" // Import the memory package
 
 	"github.com/dhamidi/smolcode"
+	"github.com/dhamidi/smolcode/history" // Import the history package
 	"github.com/dhamidi/smolcode/planner" // Import the planner package
 )
 
@@ -48,6 +49,12 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "memory" {
 		handleMemoryCommand(os.Args[2:])
 		return // Exit after handling memory command
+	}
+
+	// Check if the first argument is "history"
+	if len(os.Args) > 1 && os.Args[1] == "history" {
+		handleHistoryCommand(os.Args[2:])
+		return // Exit after handling history command
 	}
 
 	// Default behavior (original functionality)
@@ -329,6 +336,119 @@ func handlePlanCommand(args []string) {
 	default:
 		log.Printf("Usage: go run cmd/smolcode/main.go plan <subcommand> [arguments]\n")
 		log.Fatalf("Error: Unknown plan subcommand '%s'", subcommand)
+	}
+}
+
+// handleHistoryCommand processes subcommands for the 'history' feature.
+func handleHistoryCommand(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: go run cmd/smolcode/main.go history <subcommand> [arguments]")
+		log.Fatal("Error: No history subcommand provided.")
+	}
+
+	subcommand := args[0]
+	remainingArgs := args[1:] // Will be used later
+
+	switch subcommand {
+	case "new":
+		newCmd := flag.NewFlagSet("new", flag.ExitOnError)
+		newCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go history new\n")
+			fmt.Fprintf(os.Stderr, "Creates a new conversation.\n")
+		}
+		newCmd.Parse(remainingArgs)
+		if newCmd.NArg() != 0 {
+			newCmd.Usage()
+			log.Fatal("Error: 'new' does not take any arguments")
+		}
+
+		conv, err := history.New()
+		if err != nil {
+			log.Fatalf("Error creating new conversation: %v", err)
+		}
+		if err := history.Save(conv); err != nil {
+			log.Fatalf("Error saving new conversation: %v", err)
+		}
+		fmt.Printf("New conversation created with ID: %s\n", conv.ID)
+
+	case "append":
+		appendCmd := flag.NewFlagSet("append", flag.ExitOnError)
+		var conversationID string
+		var payload string
+		appendCmd.StringVar(&conversationID, "id", "", "ID of the conversation to append to")
+		appendCmd.StringVar(&payload, "payload", "", "Payload of the message to append")
+		appendCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go history append --id <conversation-id> --payload <message-payload>\n")
+			fmt.Fprintf(os.Stderr, "Appends a message to an existing conversation.\n")
+			appendCmd.PrintDefaults()
+		}
+		appendCmd.Parse(remainingArgs)
+
+		if conversationID == "" {
+			appendCmd.Usage()
+			log.Fatal("Error: --id flag is required for 'append'")
+		}
+		if payload == "" {
+			appendCmd.Usage()
+			log.Fatal("Error: --payload flag is required for 'append'")
+		}
+		if appendCmd.NArg() != 0 {
+			appendCmd.Usage()
+			log.Fatal("Error: 'append' does not take positional arguments")
+		}
+
+		// For now, we'll assume history.GetByID and history.LoadMessages exist or will be added.
+		// This part would need to be adjusted based on the actual history package API for loading.
+		// Let's simulate loading, appending, and saving.
+		// In a real scenario, history.GetByID would load the conversation.
+		// For this step, we'll create a dummy conversation, append to it, and save.
+		// This requires a history.Get function. We'll need to define that in history/history.go
+		// For now, let's imagine we have a way to load a conversation by ID.
+		// To make this runnable without modifying history/history.go *yet*,
+		// we'll just create a new conversation and append to it.
+		// This isn't the final logic but allows us to structure the CLI.
+
+		// Placeholder for loading the actual conversation by ID
+		// conv, err := history.GetByID(conversationID)
+		// if err != nil {
+		//  log.Fatalf("Error loading conversation '%s': %v", conversationID, err)
+		// }
+		// For now, let's create a dummy conversation for the sake of CLI structure
+		// This will be replaced by actual loading logic later.
+		// We need a function to load a conversation.
+		// The Save function in history.go overwrites messages.
+		// We need a Load function. For now, let's proceed with a conceptual Load.
+
+		// The history package doesn't have a GetByID function.
+		// For now, to make progress, I will *temporarily* add a conceptual placeholder
+		// that creates a new conversation and appends to it. This is NOT the final
+		// implementation for "append" but allows setting up the CLI structure.
+		// The plan will need a new step to add GetByID to history/history.go or use an existing one.
+
+		// Let's read the conversation first. We need a function for that.
+		// The current history package only has Save and New.
+		// It doesn't have a way to load a conversation.
+		// This is a problem. I should add a step to the plan to address this.
+
+		// For the CLI structure, let's assume a function `LoadConversation(id string, dbPath string)` exists
+		// and `SaveTo` in `history/history.go` will be used.
+		// And that `Conversation.Append` works as expected.
+
+		// To proceed with the CLI part, I'll write the code as if a Load function exists.
+		// I will need to add a new function `Load(id string, dbPath string) (*Conversation, error)` to history/history.go
+		// This is outside the current constraint "Do not touch history/ for this task."
+
+		// Given the constraint, I cannot fully implement `append` correctly
+		// as it requires loading a conversation, which `history/history.go` does not support.
+		// I will add a placeholder for now and create a new plan step to implement loading.
+
+		fmt.Printf("Conceptual append: Would load conversation %s, append '%s', and save.\n", conversationID, payload)
+		fmt.Println("NOTE: Full implementation requires a Load function in the history package.")
+
+	// Add cases for subcommands later
+	default:
+		fmt.Printf("Usage: go run cmd/smolcode/main.go history <subcommand> [arguments]\n")
+		log.Fatalf("Error: Unknown history subcommand '%s'", subcommand)
 	}
 }
 
