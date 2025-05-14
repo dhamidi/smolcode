@@ -14,14 +14,25 @@ var SearchCodeTool = &ToolDefinition{
 			{
 				Name: "search_code",
 				Description: strings.TrimSpace(`
-Searches for a pattern in the codebase using ripgrep (rg).
+Search for exact text patterns in files using ripgrep, a fast keyword search tool.
+
+WHEN TO USE THIS TOOL:
+- When you need to find exact text matches like variable names, function calls, or specific strings
+- When you know the precise pattern you're looking for (including regex patterns)
+- When you want to quickly locate all occurrences of a specific term across multiple files
+- When you need to search for code patterns with exact syntax
+
+WHEN NOT TO USE THIS TOOL:
+- For semantic or conceptual searches (e.g., "how does authentication work")
+- For finding code that implements a certain functionality without knowing the exact terms
+- When you already have read the entire file
 `),
 				Parameters: &genai.Schema{
 					Type: genai.TypeObject,
 					Properties: map[string]*genai.Schema{
 						"pattern": {
 							Type:        genai.TypeString,
-							Description: "The pattern to search for.",
+							Description: "The regexp pattern to search for.",
 						},
 						"directory": {
 							Type:        genai.TypeString,
