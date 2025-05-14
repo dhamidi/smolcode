@@ -121,13 +121,30 @@ func makeAPIRequest(apiKey, instruction string, existingFiles []File) ([]File, e
 	if len(apiResp.Choices) > 0 && apiResp.Choices[0].Message.Content != "" {
 		// Assuming the content of the message is a JSON string representing an array of File objects
 		contentStr := apiResp.Choices[0].Message.Content
-		// Attempt to clean the content if it's wrapped in markdown code blocks
-		contentStr = strings.TrimPrefix(contentStr, "```json\n")
-		contentStr = strings.TrimSuffix(contentStr, "\n```")
-		contentStr = strings.TrimSpace(contentStr)
 
-		if err := json.Unmarshal([]byte(contentStr), &generatedFiles); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal generated files from API response message content: %w. Content was: %s", err, apiResp.Choices[0].Message.Content)
+		// Try to extract content from a markdown JSON block first
+		jsonBlockStart := "```json\n"
+		jsonBlockEnd := "\n```"
+		startIndex := strings.Index(contentStr, jsonBlockStart)
+		var extractedJSON string
+		if startIndex != -1 {
+			endIndex := strings.LastIndex(contentStr, jsonBlockEnd)
+			if endIndex != -1 && endIndex > startIndex {
+				extractedJSON = contentStr[startIndex+len(jsonBlockStart) : endIndex]
+			} else {
+				// Malformed markdown block, or end tag missing, try to grab from start of block to end of string
+				extractedJSON = contentStr[startIndex+len(jsonBlockStart):]
+			}
+		} else {
+			// Fallback: if no markdown block, try original trimming (though this is less likely to be correct if there was leading text)
+			// This case handles if the API returns raw JSON without markdown, or if our markdown check is too simple.
+			extractedJSON = strings.TrimSpace(contentStr)
+		}
+
+		extractedJSON = strings.TrimSpace(extractedJSON) // Final trim for safety
+
+		if err := json.Unmarshal([]byte(extractedJSON), &generatedFiles); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal generated files from API response message content: %w. Extracted JSON string was: %s. Original content: %s", err, extractedJSON, apiResp.Choices[0].Message.Content)
 		}
 	} else {
 		return nil, fmt.Errorf("API response did not contain expected choices or message content. Response body: %s", string(bodyBytes))

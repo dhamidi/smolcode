@@ -66,10 +66,10 @@ func TestMakeAPIRequest_Success(t *testing.T) {
 	defer server.Close()
 
 	// Override the global API URL base to point to the test server
-	originalBaseURL := apiURLBase
+	originalChatEndpoint := chatCompletionsEndpoint               // Store original
 	chatCompletionsEndpoint = server.URL + "/v1/chat/completions" // Need to re-assign this as it includes the base
 	defer func() {
-		chatCompletionsEndpoint = originalBaseURL + "/v1/chat/completions"
+		chatCompletionsEndpoint = originalChatEndpoint // Restore original
 	}()
 
 	existingFiles := []File{
@@ -89,6 +89,58 @@ func TestMakeAPIRequest_Success(t *testing.T) {
 	expectedContents := "package main\n\nfunc newFunc() {}"
 	if string(files[0].Contents) != expectedContents {
 		t.Errorf("Expected file contents %q, got %q", expectedContents, string(files[0].Contents))
+	}
+}
+
+func TestMakeAPIRequest_SuccessWithLeadingText(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Basic validation, more comprehensive checks in TestMakeAPIRequest_Success
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("Expected to request /v1/chat/completions, got %s", r.URL.Path)
+		}
+
+		respFiles := []File{
+			{Path: "test_output.go", Contents: []byte("package test")},
+		}
+		respFilesJSON, _ := json.Marshal(respFiles)
+
+		// Simulate leading text before the JSON block
+		rawContent := fmt.Sprintf("Here is your generated code:\n```json\n%s\n```\nSome trailing remarks.", string(respFilesJSON))
+
+		apiResp := APIResponse{
+			Choices: []APIResponseChoice{
+				{
+					Message: APIRequestMessage{
+						Role:    "assistant",
+						Content: rawContent,
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(apiResp)
+	}))
+	defer server.Close()
+
+	originalChatEndpoint := chatCompletionsEndpoint
+	chatCompletionsEndpoint = server.URL + "/v1/chat/completions"
+	defer func() {
+		chatCompletionsEndpoint = originalChatEndpoint
+	}()
+
+	files, err := makeAPIRequest("test-key", "test instruction with leading text", nil)
+	if err != nil {
+		t.Fatalf("makeAPIRequest failed: %v", err)
+	}
+
+	if len(files) != 1 {
+		t.Fatalf("Expected 1 file, got %d", len(files))
+	}
+	if files[0].Path != "test_output.go" {
+		t.Errorf("Expected file path 'test_output.go', got %s", files[0].Path)
+	}
+	if string(files[0].Contents) != "package test" {
+		t.Errorf("Expected file contents %q, got %q", "package test", string(files[0].Contents))
 	}
 }
 
@@ -140,10 +192,10 @@ func TestMakeAPIRequest_ErrorStatus(t *testing.T) {
 			}))
 			defer server.Close()
 
-			originalBaseURL := apiURLBase
+			originalChatEndpoint := chatCompletionsEndpoint
 			chatCompletionsEndpoint = server.URL + "/v1/chat/completions"
 			defer func() {
-				chatCompletionsEndpoint = originalBaseURL + "/v1/chat/completions"
+				chatCompletionsEndpoint = originalChatEndpoint
 			}()
 
 			_, err := makeAPIRequest("test-key", "test instruction", nil)
@@ -164,10 +216,10 @@ func TestMakeAPIRequest_MalformedResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	originalBaseURL := apiURLBase
+	originalChatEndpoint := chatCompletionsEndpoint
 	chatCompletionsEndpoint = server.URL + "/v1/chat/completions"
 	defer func() {
-		chatCompletionsEndpoint = originalBaseURL + "/v1/chat/completions"
+		chatCompletionsEndpoint = originalChatEndpoint
 	}()
 
 	_, err := makeAPIRequest("test-key", "test instruction", nil)
@@ -187,10 +239,10 @@ func TestMakeAPIRequest_NoChoicesInResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	originalBaseURL := apiURLBase
+	originalChatEndpoint := chatCompletionsEndpoint
 	chatCompletionsEndpoint = server.URL + "/v1/chat/completions"
 	defer func() {
-		chatCompletionsEndpoint = originalBaseURL + "/v1/chat/completions"
+		chatCompletionsEndpoint = originalChatEndpoint
 	}()
 
 	_, err := makeAPIRequest("test-key", "test instruction", nil)
@@ -219,10 +271,10 @@ func TestMakeAPIRequest_MalformedFileJSONInMessage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	originalBaseURL := apiURLBase
+	originalChatEndpoint := chatCompletionsEndpoint
 	chatCompletionsEndpoint = server.URL + "/v1/chat/completions"
 	defer func() {
-		chatCompletionsEndpoint = originalBaseURL + "/v1/chat/completions"
+		chatCompletionsEndpoint = originalChatEndpoint
 	}()
 
 	_, err := makeAPIRequest("test-key", "test instruction", nil)
