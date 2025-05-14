@@ -64,9 +64,7 @@ func Code(conversationFilename string, modelName string) {
 		Add(RecallMemoryTool).
 		Add(PlannerTool).
 		Add(CodegenTool).
-		Add(DateTool)
-
-	systemPrompt, err := readFileContent("smolcode.md")
+		systemPrompt, err := readFileContent("smolcode.md")
 	if err != nil {
 		fmt.Printf("Error reading smolcode.md: %s\n", err.Error())
 		return
