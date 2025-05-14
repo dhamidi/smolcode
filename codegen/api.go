@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const (
+var (
 	apiURLBase              = "https://api.inceptionlabs.ai/v1"
 	chatCompletionsEndpoint = apiURLBase + "/chat/completions"
 )

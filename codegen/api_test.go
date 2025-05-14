@@ -47,7 +47,7 @@ func TestMakeAPIRequest_Success(t *testing.T) {
 
 		// Send response
 		respFiles := []File{
-			{Path: "new_func.go", Contents: []byte("package main\n\nfunc newFunc() {}\n")},
+			{Path: "new_func.go", Contents: []byte("package main\n\nfunc newFunc() {}")},
 		}
 		respFilesJSON, _ := json.Marshal(respFiles)
 		apiResp := APIResponse{

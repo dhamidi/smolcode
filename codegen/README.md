@@ -7,7 +7,7 @@ This package provides tools to generate code using the Inceptionlabs API.
 First, initialize a new generator with your API key:
 
 ```go
-import "smolcode/codegen" // Adjust import path to your module
+import "github.com/dhamidi/smolcode/codegen" // Adjust import path to your module
 
 apiKey := "YOUR_INCEPTIONLABS_API_KEY"
 generator := codegen.New(apiKey)

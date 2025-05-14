@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"smolcode/codegen" // Placeholder: Adjust to your actual module path
+	"github.com/dhamidi/smolcode/codegen" // Placeholder: Adjust to your actual module path
 )
 
 // stringSliceFlag is a custom flag type to handle multiple occurrences of a string flag
