@@ -2,6 +2,7 @@ package smolcode
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -43,7 +44,11 @@ func runCommand(args map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("run_command: no command specified")
 	}
 
-	cmd := exec.Command(cmdParts[0], cmdParts[1:]...)
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "sh" // Default to sh if SHELL is not set
+	}
+	cmd := exec.Command(shell, "-c", command)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("run_command: failed to run command '%s': %w (output: %s)", command, err, output)
 	} else {
