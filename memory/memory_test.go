@@ -131,7 +131,7 @@ func TestSearchMemoryWithSpecialChars(t *testing.T) {
 	// It should find ID2
 	t.Run("search exact path direct FTS expectation", func(t *testing.T) {
 		// The user query is "path/to/document.txt"
-		// Our function will turn this into ""path/to/document.txt"" for the MATCH clause
+		// Our function will turn this into "\"path/to/document.txt\"" for the MATCH clause
 		// SQLite FTS should treat this as a phrase search for "path/to/document.txt"
 		query := "path/to/document.txt"
 		results, err := mm.SearchMemory(query)
@@ -146,8 +146,8 @@ func TestSearchMemoryWithSpecialChars(t *testing.T) {
 		}
 	})
 
-	// Test specifically that searching for "content" does not find "Content with "quotes" in it."
-	// but searching for "Content with "quotes" in it." (with our escaping) does.
+	// Test specifically that searching for "content" does not find "Content with \"quotes\" in it."
+	// but searching for "Content with \"quotes\" in it." (with our escaping) does.
 	t.Run("distinguish partial vs full quoted content", func(t *testing.T) {
 		queryNoQuotes := "Content with quotes in it."
 		results, err := mm.SearchMemory(queryNoQuotes)
@@ -156,23 +156,23 @@ func TestSearchMemoryWithSpecialChars(t *testing.T) {
 		}
 		// This should find id4 because FTS tokenizes "Content", "with", "quotes", "in", "it" and matches.
 		// Our escaping aims to make the *user's input* literal.
-		// If user inputs "Content with quotes in it." it becomes ""Content with quotes in it.""
-		// If user inputs "Content with \"quotes\" in it." it becomes ""Content with \"\"quotes\"\" in it.""
+		// If user inputs "Content with quotes in it." it becomes "\"Content with quotes in it.\""
+		// If user inputs "Content with \\\"quotes\\\" in it." it becomes "\"Content with \\\"\\\"quotes\\\"\\\" in it.\""
 		// The document is "Content with \"quotes\" in it."
 		// FTS tokenizes this as "Content", "with", "quotes", "in", "it".
-		// So searching for "Content with quotes in it." (which becomes ""Content with quotes in it."") WILL match.
+		// So searching for "Content with quotes in it." (which becomes "\"Content with quotes in it.\"") WILL match.
 		// This test case needs rethinking in light of how FTS tokenizes *indexed* content versus *query* content.
 
 		// Revised expectation: Searching for "Content with quotes in it." (no literal quotes in query)
-		// becomes ""Content with quotes in it.""
+		// becomes "\"Content with quotes in it.\""
 		// The document "Content with \"quotes\" in it." is tokenized as "Content", "with", "quotes", "in", "it."
-		// The FTS query ""Content with quotes in it."" will match these tokens in sequence.
+		// The FTS query "\"Content with quotes in it.\"" will match these tokens in sequence.
 		if len(results) != 1 || results[0].ID != "id4" {
 			t.Errorf("SearchMemory for '%s': expected 1 result (id4), got %d. Results: %v", queryNoQuotes, len(results), results)
 		}
 
 		queryWithQuotes := "Content with \"quotes\" in it." // User types this
-		// Internally becomes: ""Content with \"\"quotes\"\" in it.""
+		// Internally becomes: "\"Content with \"\"quotes\"\" in it.\""
 		results, err = mm.SearchMemory(queryWithQuotes)
 		if err != nil {
 			t.Fatalf("SearchMemory for '%s' failed: %v", queryWithQuotes, err)
@@ -245,4 +245,43 @@ func TestSearchMemoryBuildCommand(t *testing.T) {
 			t.Errorf("SearchMemory(%s): expected NOT to find ID %s, but it was found in results %v", query, id, results)
 		}
 	}
+}
+
+func TestSearchMemoryWithSpacedTerms(t *testing.T) {
+	mm, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	memories := []struct {
+		id      string
+		content string
+	}{
+		{"spaced_doc", "This document mentions test at the beginning and command at the end."},
+		{"other_doc", "This document is about something else entirely."},
+	}
+
+	for _, mem := range memories {
+		if err := mm.AddMemory(mem.id, mem.content); err != nil {
+			t.Fatalf("AddMemory(%s, %s) failed: %v", mem.id, mem.content, err)
+		}
+	}
+
+	query := "test command"
+	results, err := mm.SearchMemory(query)
+	if err != nil {
+		t.Fatalf("SearchMemory(%s) failed: %v", query, err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("SearchMemory(%s): got %d results, want 1. Results: %v", query, len(results), results)
+		var resultIDs []string
+		for _, r := range results {
+			resultIDs = append(resultIDs, r.ID)
+		}
+		t.Logf("Found IDs: %v", resultIDs)
+	}
+
+	if len(results) == 1 && results[0].ID != "spaced_doc" {
+		t.Errorf("SearchMemory(%s): expected to find ID 'spaced_doc', but found %s", query, results[0].ID)
+	}
+
 }
