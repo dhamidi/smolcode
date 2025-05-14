@@ -68,15 +68,21 @@ func ListConversations(dbPath string) ([]ConversationMetadata, error) {
 		}
 
 		// Parse the latest_message_at string into time.Time
-		meta.LatestMessageTime, err = time.Parse(time.RFC3339Nano, latestTimestampStr)
+		// Attempt 1: YYYY-MM-DD HH:MM:SS (format observed in error)
+		meta.LatestMessageTime, err = time.Parse("2006-01-02 15:04:05", latestTimestampStr)
 		if err != nil {
-			// Attempt to parse with a different common SQLite format if the first one fails
-			meta.LatestMessageTime, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", latestTimestampStr)
+			// Attempt 2: RFC3339Nano (high precision with timezone)
+			meta.LatestMessageTime, err = time.Parse(time.RFC3339Nano, latestTimestampStr)
 			if err != nil {
-				// Fallback to RFC3339 if the specific sqlite one also fails
+				// Attempt 3: RFC3339 (standard with timezone)
 				meta.LatestMessageTime, err = time.Parse(time.RFC3339, latestTimestampStr)
 				if err != nil {
-					return nil, fmt.Errorf("failed to parse latest_message_timestamp '%s': %w", latestTimestampStr, err)
+					// Attempt 4: Specific SQLite format with nanoseconds and offset (less likely if simpler format seen)
+					meta.LatestMessageTime, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", latestTimestampStr)
+					if err != nil {
+						// All attempts failed
+						return nil, fmt.Errorf("failed to parse latest_message_timestamp '%s' with known formats: %w", latestTimestampStr, err)
+					}
 				}
 			}
 		}

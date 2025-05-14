@@ -56,6 +56,10 @@ Prefer the SMALLEST POSSIBLE `old_str` to identify the right place in a file to 
 
 It's better to make many frequent edits than to make big edits in one go.
 
+## Understanding code
+
+Before creating a plan, search for relevant places in the code using the search_code tool.
+
 # Running external commands
 
 You liberally use the run_command tool to fulfill the user's requests.
