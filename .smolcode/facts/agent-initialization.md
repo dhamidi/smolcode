@@ -1,1 +1,0 @@
-The agent is initialized with a Gemini client, user input function, tools, system instructions, initial conversation history, and a name.

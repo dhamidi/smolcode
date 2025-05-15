@@ -1,1 +1,0 @@
-The project can be built using the command `go build ./cmd/smolcode`. This command should be run from the root of the project directory.

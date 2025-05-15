@@ -1,1 +1,0 @@
-The default behavior involves parsing `-conversation` (or `-c`) flags and calling `smolcode.Code(conversationPath)`.

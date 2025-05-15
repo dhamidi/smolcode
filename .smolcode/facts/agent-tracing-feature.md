@@ -1,1 +1,0 @@
-The agent includes a tracing feature, toggled by `/trace` and `/no-trace`, for detailed logging of interactions with the Gemini model and tools.

@@ -1,1 +1,0 @@
-Plan subcommands include: `new`, `inspect`, `next-step`, `set`, `add-step`, `list`.

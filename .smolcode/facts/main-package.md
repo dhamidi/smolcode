@@ -1,1 +1,0 @@
-The file `cmd/smolcode/main.go` defines the `main` package for the smolcode executable.

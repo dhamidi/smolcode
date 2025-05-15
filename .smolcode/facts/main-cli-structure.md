@@ -1,1 +1,0 @@
-The overall CLI structure is `smolcode [command] [subcommand] [arguments...]`.

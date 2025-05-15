@@ -1,1 +1,0 @@
-The `main` function has a guard to prevent `plan` subcommands if `plan` is not the first argument when other flags (like -c) are present.

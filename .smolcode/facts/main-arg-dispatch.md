@@ -1,1 +1,0 @@
-If the first arg is `plan`, `handlePlanCommand` is called. If `memory`, `handleMemoryCommand` is called. Otherwise, default behavior is executed.

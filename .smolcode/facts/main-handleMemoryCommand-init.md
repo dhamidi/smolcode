@@ -1,1 +1,0 @@
-`handleMemoryCommand` initializes a `memory.New(memoryDBPath)` and defers `mgr.Close()`.

@@ -60,7 +60,6 @@ The `.smolcode` directory in the root of the project stores operational data for
 
 | Filename/Directory      | Purpose                                                                                                                               |
 | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
-| `facts/`                | Directory storing individual facts, lessons, or pieces of knowledge as markdown files. Each file typically represents a specific item. |
 | `history.db`            | Database file for storing conversation history or interaction logs.                                                                   |
 | `last-working-version`  | Stores a reference or copy of the last known good state, potentially for rollback or recovery.                                        |
 | `memory.db`             | Primary database for the agent's memory, including facts and learned lessons (likely an indexed or structured form of `facts/`).      |

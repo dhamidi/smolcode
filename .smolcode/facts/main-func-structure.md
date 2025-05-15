@@ -1,1 +1,0 @@
-The `main` function is the entry point and acts as a dispatcher based on the first command-line argument.

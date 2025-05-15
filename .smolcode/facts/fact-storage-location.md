@@ -1,1 +1,0 @@
-Facts are stored in the `.smolcode/facts` directory.
