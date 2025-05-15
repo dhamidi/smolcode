@@ -42,6 +42,31 @@ The `smolcode` CLI can be invoked in several ways:
     *   `./smolcode history list`: Lists all saved conversations with their details.
     *   `./smolcode history show --id <conversation-id>`: Shows the detailed messages of a specific conversation.
 
+# Configuration
+
+This section details the necessary environment variables and files used by `smolcode`.
+
+## Environment Variables
+
+Based on the current analysis, `smolcode` itself does not directly require specific environment variables to be set for its core operation. However, the tools it interacts with, particularly the Google Gemini API, will require appropriate authentication.
+
+*   `GEMINI_API_KEY`: Your API key for Google Gemini. This is required for the agent to communicate with the language model.
+
+_(If other environment variables are identified as directly used by `smolcode` in the future, they will be listed here.)_
+
+## `.smolcode` Directory
+
+The `.smolcode` directory in the root of the project stores operational data for the agent. Here's a breakdown of its contents:
+
+| Filename/Directory      | Purpose                                                                                                                               |
+| :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
+| `facts/`                | Directory storing individual facts, lessons, or pieces of knowledge as markdown files. Each file typically represents a specific item. |
+| `history.db`            | Database file for storing conversation history or interaction logs.                                                                   |
+| `last-working-version`  | Stores a reference or copy of the last known good state, potentially for rollback or recovery.                                        |
+| `memory.db`             | Primary database for the agent's memory, including facts and learned lessons (likely an indexed or structured form of `facts/`).      |
+| `plans.db`              | Database storing development plans, including their steps and statuses.                                                                 |
+| `system.md`             | Contains the system prompt, core instructions, or initial configuration for the `smolcode` agent.                                     |
+
 # How it works
 
 It's really simple:

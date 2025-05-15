@@ -3,6 +3,7 @@ package smolcode
 import (
 	"bufio"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,9 @@ import (
 	"github.com/dhamidi/smolcode/history"
 	"google.golang.org/genai"
 )
+
+//go:embed .smolcode/system.md
+var defaultSystemPrompt string
 
 func Code(conversationFilename string, modelName string) {
 	initialHistory := LoadConversationFromFile(conversationFilename)
@@ -64,7 +68,7 @@ func Code(conversationFilename string, modelName string) {
 		Add(RecallMemoryTool).
 		Add(PlannerTool).
 		Add(CodegenTool)
-	systemPrompt, err := readFileContent("smolcode.md")
+	systemPrompt, err := readFileContent(".smolcode/system.md")
 	if err != nil {
 		fmt.Printf("Error reading smolcode.md: %s\n", err.Error())
 		return
@@ -558,11 +562,17 @@ func readFileContent(filepath string) (string, error) {
 	content, err := os.ReadFile(filepath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// File not found is not an error in this context, return empty string.
-			return "", nil
+			// File not found, return default prompt if filepath is the target system prompt file.
+			if filepath == ".smolcode/system.md" {
+				return defaultSystemPrompt, nil
+			}
+			return "", nil // Return empty for other non-existent files
 		}
 		// For other read errors, return the error.
 		return "", fmt.Errorf("reading file %q: %w", filepath, err)
+	}
+	if len(strings.TrimSpace(string(content))) == 0 && filepath == ".smolcode/system.md" {
+		return defaultSystemPrompt, nil // Return default if file is empty
 	}
 	return string(content), nil
 }
