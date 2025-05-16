@@ -1,19 +1,23 @@
 package main
 
 import (
+	"archive/tar"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/dhamidi/smolcode/memory" // Import the memory package
-
 	"github.com/dhamidi/smolcode"
+	"github.com/dhamidi/smolcode/codegen"
 	"github.com/dhamidi/smolcode/history" // Import the history package
+	"github.com/dhamidi/smolcode/memory"  // Import the memory package
 	"github.com/dhamidi/smolcode/planner" // Import the planner package
 )
 
@@ -40,6 +44,94 @@ func die(format string, a ...interface{}) {
 	os.Exit(1)
 }
 
+// TarballWriterFS implements codegen.WriteableFileSystem to write files into a tar archive.
+// It needs to be defined in a package that can import codegen, so main is fine.
+// Ensure this is placed before the main() function or in a way it's properly declared before use.
+
+// Add necessary imports for TarballWriterFS at the top of the file if not already present:
+// import (
+// 	"archive/tar"
+// 	"fmt"
+// 	"io"
+// 	"io/fs"
+// 	"path/filepath"
+// 	"strings"
+// 	"time"
+// 	"github.com/dhamidi/smolcode/codegen"
+// )
+
+type TarballWriterFS struct {
+	tw          *tar.Writer
+	createdDirs map[string]bool
+}
+
+func NewTarballWriterFS(target io.Writer) *TarballWriterFS {
+	return &TarballWriterFS{
+		tw:          tar.NewWriter(target),
+		createdDirs: make(map[string]bool),
+	}
+}
+
+// MkdirAll creates directory entries in the tar archive.
+func (tfs *TarballWriterFS) MkdirAll(path string, perm fs.FileMode) error {
+	cleanPath := filepath.Clean(path)
+	if cleanPath == "." || cleanPath == "" {
+		return nil
+	}
+	dirPath := strings.TrimSuffix(cleanPath, "/") + "/" // Ensure it's a directory path
+
+	// Iterate through parent components to ensure they are all created if not already present
+	currentProcessingPath := ""
+	parts := strings.Split(strings.Trim(dirPath, "/"), "/")
+
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		currentProcessingPath = filepath.Join(currentProcessingPath, part)
+		entryPath := strings.TrimSuffix(currentProcessingPath, "/") + "/"
+
+		if !tfs.createdDirs[entryPath] {
+			hdr := &tar.Header{
+				Name:     entryPath,
+				Mode:     int64(perm | fs.ModeDir), // Ensure directory bit is set, use provided perm
+				Typeflag: tar.TypeDir,
+				ModTime:  time.Now(),
+			}
+			if err := tfs.tw.WriteHeader(hdr); err != nil {
+				return fmt.Errorf("tarball: failed to write header for directory %s: %w", entryPath, err)
+			}
+			tfs.createdDirs[entryPath] = true
+		}
+	}
+	return nil
+}
+
+// WriteFile writes a file to the tar archive.
+func (tfs *TarballWriterFS) WriteFile(filename string, data []byte, perm fs.FileMode) error {
+	cleanFilename := filepath.Clean(filename)
+	hdr := &tar.Header{
+		Name:     cleanFilename,
+		Size:     int64(len(data)),
+		Mode:     int64(perm &^ fs.ModeDir), // Ensure it's a regular file mode
+		ModTime:  time.Now(),
+		Typeflag: tar.TypeReg,
+	}
+
+	if err := tfs.tw.WriteHeader(hdr); err != nil {
+		return fmt.Errorf("tarball: failed to write header for file %s: %w", cleanFilename, err)
+	}
+	if _, err := tfs.tw.Write(data); err != nil {
+		return fmt.Errorf("tarball: failed to write contents for file %s: %w", cleanFilename, err)
+	}
+	return nil
+}
+
+// Close finishes the tar archive. This must be called.
+func (tfs *TarballWriterFS) Close() error {
+	return tfs.tw.Close()
+}
+
 func main() {
 	// Check if the first argument is "plan"
 	if len(os.Args) > 1 && os.Args[1] == "plan" {
@@ -57,6 +149,12 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "history" {
 		handleHistoryCommand(os.Args[2:])
 		return // Exit after handling history command
+	}
+
+	// Check if the first argument is "generate"
+	if len(os.Args) > 1 && os.Args[1] == "generate" {
+		handleGenerateCommand(os.Args[2:])
+		return // Exit after handling generate command
 	}
 
 	// Default behavior (original functionality)
@@ -84,6 +182,77 @@ func main() {
 	}
 
 	smolcode.Code(conversationPath, modelName)
+}
+
+// handleGenerateCommand processes the 'generate' subcommand.
+func handleGenerateCommand(args []string) {
+	genCmd := flag.NewFlagSet("generate", flag.ExitOnError)
+	archiveOutput := genCmd.Bool("archive", false, "Output a tar archive to stdout instead of writing files to disk.")
+	apiKey := genCmd.String("apikey", os.Getenv("GEMINI_API_KEY"), "API key for the codegen service. Defaults to GEMINI_API_KEY env var.")
+
+	genCmd.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go generate [flags] <instruction>\n")
+		fmt.Fprintf(os.Stderr, "Generates code based on an instruction.\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		genCmd.PrintDefaults()
+	}
+
+	genCmd.Parse(args)
+
+	if genCmd.NArg() < 1 {
+		genCmd.Usage()
+		log.Fatal("Error: Instruction argument is required for 'generate' command.")
+	}
+	instruction := strings.Join(genCmd.Args(), " ") // Join all remaining args as the instruction
+
+	if *apiKey == "" {
+		log.Fatal("Error: API key is required. Set GEMINI_API_KEY environment variable, or use --apikey flag.")
+	}
+
+	generator := codegen.New(*apiKey)
+
+	// For now, existingFiles is empty. This could be extended later.
+	var existingFiles []codegen.File
+
+	fmt.Fprintf(os.Stderr, "Generating code with instruction: %s...\n", instruction)
+	generatedFiles, err := generator.GenerateCode(instruction, existingFiles)
+	if err != nil {
+		log.Fatalf("Error generating code: %v", err)
+	}
+	fmt.Fprintf(os.Stderr, "Code generation complete. Received %d file(s).\n", len(generatedFiles))
+
+	// Convert []codegen.File to []*codegen.File for WriteTo method
+	var generatedFilePtrs []*codegen.File
+	for i := range generatedFiles {
+		generatedFilePtrs = append(generatedFilePtrs, &generatedFiles[i])
+	}
+
+	if *archiveOutput {
+		fmt.Fprintf(os.Stderr, "Outputting to tar archive on stdout...\n")
+		tarFS := NewTarballWriterFS(os.Stdout)
+		defer func() {
+			if err := tarFS.Close(); err != nil {
+				// Log to stderr, as stdout is used for tar data
+				fmt.Fprintf(os.Stderr, "Error closing tar archive: %v\n", err)
+			}
+		}()
+
+		if err := generator.WriteTo(generatedFilePtrs, tarFS); err != nil {
+			// Error is logged to stderr by log.Fatalf, stdout should remain clean for tar
+			log.Fatalf("Error writing to tar archive: %v", err)
+		}
+		// tarFS.Close() is handled by defer
+		fmt.Fprintf(os.Stderr, "Tar archive written to stdout successfully.\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "Writing files to disk...\n")
+		if err := generator.Write(generatedFiles); err != nil {
+			log.Fatalf("Error writing files to disk: %v", err)
+		}
+		fmt.Fprintf(os.Stderr, "Files written to disk successfully:\n")
+		for _, f := range generatedFiles {
+			fmt.Fprintf(os.Stderr, "  - %s\n", f.Path)
+		}
+	}
 }
 
 // handlePlanCommand processes subcommands for the 'plan' feature.
