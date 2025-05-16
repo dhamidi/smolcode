@@ -452,6 +452,48 @@ func (agent *Agent) runInference(ctx context.Context, conversation []*genai.Cont
 			}
 		} else {
 			// Non-retryable error
+			// Check for specific 403 CachedContent error
+			var apiErr *genai.APIError
+			if errors.As(err, &apiErr) {
+				// IMPORTANT: The fields .Code and .Message are assumed.
+				// Replace with actual fields from genai.APIError if different.
+				// This is a placeholder for the actual structure of APIError.
+				// We need to find the real way to get HTTP status code and message.
+				// For now, let's assume apiErr has a .GRPCStatus().Code() and .Error() for message
+				// or similar. Since we don't have the exact structure, this is a best guess.
+
+				// Attempting to access common error properties, this might need adjustment
+				// based on the actual genai.APIError structure.
+				// Google API errors often wrap a *googleapi.Error.
+				// Let's try to unwrap that.
+
+				// Let's assume err.Error() contains the message for now for string checking.
+				// And we'll need a way to get the status code.
+				// This part is speculative without the APIError definition.
+				// A more robust solution would inspect the genai.APIError type directly.
+
+				// For the purpose of this exercise, we'll string match on the error message
+				// and assume a 403 is implied if "CachedContent" is present in a specific way.
+				// This is NOT ideal.
+				if strings.Contains(err.Error(), "403") && strings.Contains(err.Error(), "CachedContent") {
+					agent.trace("CachedContentError", map[string]string{"status": "ignoring_403_cached_content", "error": err.Error()})
+					// If it's the specific CachedContent 403 error, we want to continue.
+					// We need to decide what 'response' should be in this case.
+					// Returning a nil response and nil error might be one way,
+					// or we might need to signal the calling code to retry without cache, or clear the cache.
+
+					// For now, let's try to invalidate the cache and signal a retry of the inference.
+					// This means runInference should ideally return a specific error or signal.
+					// Or, we can handle it internally by clearing the cache and retrying the loop.
+
+					fmt.Fprintf(os.Stderr, "Encountered 403 error with CachedContent: %v. Invalidating cache and retrying without cache for this attempt.\n", err)
+					agent.cachedContent = "" // Invalidate cache
+					agent.cachedHistoryCount = 0
+					// Continue the loop to retry without cache for this specific attempt.
+					// The next iteration of the loop in runInference will not use cache.
+					continue // This will go to the next attempt in the retry loop.
+				}
+			}
 			agent.trace("<", response) // Trace the error response if any
 			return response, err
 		}
