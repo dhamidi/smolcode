@@ -74,7 +74,7 @@ var CodegenTool = &ToolDefinition{
 		}
 
 		generator := codegen.New(apiKey)
-		generatedFiles, err := generator.GenerateCode(instruction, existingCodegenFiles)
+		generatedFiles, err := generator.GenerateCode(instruction, existingCodegenFiles, []codegen.DesiredFile{})
 		if err != nil {
 			return nil, fmt.Errorf("perform_code_generation: error from GenerateCode: %w", err)
 		}

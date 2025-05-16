@@ -244,7 +244,7 @@ func handleGenerateCommand(args []string) {
 	}
 
 	fmt.Fprintf(os.Stderr, "Generating code with instruction: %s...\n", instruction)
-	generatedFiles, err := generator.GenerateCode(instruction, existingFilesToPass)
+	generatedFiles, err := generator.GenerateCode(instruction, existingFilesToPass, []codegen.DesiredFile{})
 	if err != nil {
 		log.Fatalf("Error generating code: %v", err)
 	}

@@ -51,24 +51,41 @@ type APIErrorDetail struct {
 	Code    any    `json:"code"` // Can be string or int
 }
 
-// makeAPIRequest sends a request to the Inceptionlabs API and returns the generated files content.
-// For now, `existingFiles` are passed as a simple string representation in the prompt.
-// The return type for generated files is a placeholder `[]File` for now.
-func makeAPIRequest(apiKey, instruction string, existingFiles []File) ([]File, error) {
-	var existingFilesContentBuilder strings.Builder
+// makeChatCompletionsRequest sends a request to the Inceptionlabs API for a single file generation.
+// It constructs the prompt as per docs.md and returns the deserialized APIResponse.
+func makeChatCompletionsRequest(apiKey, instruction string, existingFiles []File, allDesiredFiles []DesiredFile, currentFileToGenerate DesiredFile) (*APIResponse, error) {
+	var userMessageBuilder strings.Builder
+
+	// Overall instruction
+	userMessageBuilder.WriteString(fmt.Sprintf("Overall instruction:\n%s\n\n", instruction))
+
+	// Existing files
 	if len(existingFiles) > 0 {
-		existingFilesContentBuilder.WriteString("\n\nExisting files:\n")
+		userMessageBuilder.WriteString("Existing files (for context):\n")
 		for _, f := range existingFiles {
-			existingFilesContentBuilder.WriteString(fmt.Sprintf("--- %s ---\n%s\n", f.Path, string(f.Contents)))
+			userMessageBuilder.WriteString(fmt.Sprintf("--- %s ---\n%s\n", f.Path, string(f.Contents)))
 		}
+		userMessageBuilder.WriteString("\n")
 	}
 
-	userContent := fmt.Sprintf("%s%s", instruction, existingFilesContentBuilder.String())
+	// List of all desired output files
+	if len(allDesiredFiles) > 0 {
+		userMessageBuilder.WriteString("Desired output files to be generated:\n")
+		for _, df := range allDesiredFiles {
+			userMessageBuilder.WriteString(fmt.Sprintf("- %s: %s\n", df.Path, df.Description))
+		}
+		userMessageBuilder.WriteString("\n")
+	}
+
+	// Indication of the currently requested file
+	userMessageBuilder.WriteString(fmt.Sprintf("Please generate the content for the following file:\nPath: %s\nDescription: %s\n", currentFileToGenerate.Path, currentFileToGenerate.Description))
+
+	userContent := userMessageBuilder.String()
 
 	reqBody := APIRequest{
 		Model: "mercury-coder-small", // As per instruction.md
 		Messages: []APIRequestMessage{
-			{Role: "system", Content: "You are a helpful assistant that generates code based on instructions and existing files. You should output the generated files in a format that can be parsed, for example, a JSON array of objects, each with a 'path' and 'contents' field."},
+			{Role: "system", Content: "You are a helpful assistant that generates code. You will be given an overall instruction, a set of existing reference files, a list of all files to be generated with their descriptions, and the specific file you need to generate now. Your response MUST ONLY be the complete text content for the requested file. Do NOT include any other explanatory text, markdown formatting, or any preamble. Only the raw file content."},
 			{Role: "user", Content: userContent},
 		},
 	}
@@ -111,60 +128,18 @@ func makeAPIRequest(apiKey, instruction string, existingFiles []File) ([]File, e
 
 	var apiResp APIResponse
 	if err := json.Unmarshal(bodyBytes, &apiResp); err != nil {
+		// If unmarshalling fails, but there was an API error message in a parsable format in the body, prioritize that.
+		var errDetail APIErrorDetail
+		if json.Unmarshal(bodyBytes, &errDetail) == nil && errDetail.Message != "" {
+			// This is a case where the top-level structure might not match APIResponse (e.g. no 'choices')
+			// but an error object is present.
+			apiResp.Error = &errDetail
+			return &apiResp, fmt.Errorf("API returned an error structure: %s (Type: %s, Code: %v). Original unmarshal error: %w. Response body: %s", errDetail.Message, errDetail.Type, errDetail.Code, err, string(bodyBytes))
+		}
 		return nil, fmt.Errorf("failed to unmarshal API response: %w. Response body: %s", err, string(bodyBytes))
 	}
 
-	// --- Placeholder for parsing generated files ---
-	// The actual parsing logic will depend on how the API structures the generated files in its response.
-	// For now, we expect the API to return a JSON string in the message content that we can then unmarshal into []File.
-	var generatedFiles []File
-	if len(apiResp.Choices) > 0 && apiResp.Choices[0].Message.Content != "" {
-		// Assuming the content of the message is a JSON string representing an array of File objects
-		contentStr := apiResp.Choices[0].Message.Content
-
-		// Try to extract content from a markdown JSON block first
-		jsonBlockStart := "```json\n"
-		jsonBlockEnd := "\n```"
-		startIndex := strings.Index(contentStr, jsonBlockStart)
-		var extractedJSON string
-		if startIndex != -1 {
-			endIndex := strings.LastIndex(contentStr, jsonBlockEnd)
-			if endIndex != -1 && endIndex > startIndex {
-				extractedJSON = contentStr[startIndex+len(jsonBlockStart) : endIndex]
-			} else {
-				// Malformed markdown block, or end tag missing, try to grab from start of block to end of string
-				extractedJSON = contentStr[startIndex+len(jsonBlockStart):]
-			}
-		} else {
-			// Fallback: if no markdown block, try original trimming (though this is less likely to be correct if there was leading text)
-			// This case handles if the API returns raw JSON without markdown, or if our markdown check is too simple.
-			extractedJSON = strings.TrimSpace(contentStr)
-		}
-
-		extractedJSON = strings.TrimSpace(extractedJSON) // Final trim for safety
-
-		// Intermediate struct for unmarshalling file data from API, where contents are string
-		type apiGeneratedFile struct {
-			Path     string
-			Contents string
-		}
-
-		var tempGeneratedFiles []apiGeneratedFile
-		if err := json.Unmarshal([]byte(extractedJSON), &tempGeneratedFiles); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal generated files from API response message content: %w. Extracted JSON string was: %s. Original content: %s", err, extractedJSON, apiResp.Choices[0].Message.Content)
-		}
-
-		// Convert to []codegen.File
-		generatedFiles = make([]File, len(tempGeneratedFiles))
-		for i, tgf := range tempGeneratedFiles {
-			generatedFiles[i] = File{
-				Path:     tgf.Path,
-				Contents: []byte(tgf.Contents),
-			}
-		}
-	} else { // This 'else' corresponds to 'if len(apiResp.Choices) > 0 ...'
-		return nil, fmt.Errorf("API response did not contain expected choices or message content. Response body: %s", string(bodyBytes))
-	}
-
-	return generatedFiles, nil
+	// The APIResponse itself (including any error it might contain) is returned directly.
+	// The caller (in codegen.go) is responsible for checking apiResp.Error and apiResp.Choices.
+	return &apiResp, nil
 }
