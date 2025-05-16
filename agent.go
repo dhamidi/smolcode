@@ -22,27 +22,107 @@ import (
 //go:embed .smolcode/system.md
 var defaultSystemPrompt string
 
-func Code(conversationFilename string, modelName string) {
-	initialHistory := LoadConversationFromFile(conversationFilename)
+func Code(conversationID string, modelName string, newConversationFlag bool) error {
+	var loadedConv *history.Conversation
+	var err error
+	initialHistoryForAgent := []*genai.Content{}
 
-	// Check if the conversation file is a temporary reload file and remove it after loading
-	if conversationFilename != "" && strings.HasPrefix(conversationFilename, "smolcode-") && strings.HasSuffix(conversationFilename, ".json") {
-		err := os.Remove(conversationFilename)
+	if conversationID != "" {
+		// Attempt to load the specified conversation
+		fmt.Printf("Attempting to load conversation with ID: %s\n", conversationID)
+		loadedConv, err = history.Load(conversationID)
 		if err != nil {
-			// Log the error but continue execution
-			fmt.Fprintf(os.Stderr, "Warning: could not remove temporary conversation file %s: %v\n", conversationFilename, err)
+			fmt.Fprintf(os.Stderr, "Error loading conversation %s: %v. Starting a new conversation instead.\n", conversationID, err)
+			// Fall through to creating a new conversation
+			loadedConv, err = history.New()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Fatal: Could not create new conversation: %v\n", err)
+				return err // Return the error
+			}
+			fmt.Printf("Started new conversation with ID: %s\n", loadedConv.ID)
 		} else {
-			fmt.Printf("Removed temporary conversation file: %s\n", conversationFilename)
+			fmt.Printf("Successfully loaded conversation ID: %s\n", loadedConv.ID)
+		}
+	} else if newConversationFlag {
+		// Explicitly start a new conversation
+		loadedConv, err = history.New()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Fatal: Could not create new conversation: %v\n", err)
+			return err // Return the error
+		}
+		fmt.Printf("Started new conversation with ID: %s\n", loadedConv.ID)
+	} else {
+		// Attempt to load the latest conversation
+		fmt.Println("No conversation ID specified, attempting to load the latest conversation...")
+		convList, listErr := history.ListConversations(history.DefaultDatabasePath)
+		if listErr != nil {
+			fmt.Fprintf(os.Stderr, "Error listing conversations: %v. Starting a new conversation.\n", listErr)
+		}
+		if len(convList) > 0 {
+			latestID := convList[0].ID // Assumes list is sorted by latest
+			fmt.Printf("Found latest conversation with ID: %s. Attempting to load.\n", latestID)
+			loadedConv, err = history.Load(latestID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading latest conversation %s: %v. Starting a new conversation instead.\n", latestID, err)
+			} else {
+				fmt.Printf("Successfully loaded latest conversation ID: %s\n", loadedConv.ID)
+			}
+		} else {
+			fmt.Println("No existing conversations found.")
+		}
+		// If loadedConv is still nil (no latest found or error loading it), create a new one
+		if loadedConv == nil {
+			fmt.Println("Starting a new conversation.")
+			loadedConv, err = history.New()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Fatal: Could not create new conversation: %v\n", err)
+				return err // Return the error
+			}
+			fmt.Printf("Started new conversation with ID: %s\n", loadedConv.ID)
 		}
 	}
 
+	// Populate initialHistoryForAgent from loadedConv.Messages
+	if loadedConv != nil && loadedConv.Messages != nil {
+		for _, msgWrapper := range loadedConv.Messages {
+			if payloadBytes, ok := msgWrapper.Payload.([]byte); ok {
+				var contentPart genai.Content
+				unmarshalErr := json.Unmarshal(payloadBytes, &contentPart)
+				if unmarshalErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: could not unmarshal genai.Content from DB bytes: %v\n", unmarshalErr)
+					continue
+				}
+				initialHistoryForAgent = append(initialHistoryForAgent, &contentPart)
+			} else {
+				// This case implies that the payload stored in the DB (and loaded by history.Load)
+				// was not []byte. This could happen if old data exists or if there's a mismatch
+				// in saving logic. For robustness, try the map[string]interface{} conversion as a fallback.
+				fmt.Fprintf(os.Stderr, "Warning: message payload in DB was not []byte (type: %T). Attempting fallback conversion.\n", msgWrapper.Payload)
+				var contentPart genai.Content
+				fallbackPayloadBytes, marshalErr := json.Marshal(msgWrapper.Payload) // marshal the map/value
+				if marshalErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: fallback - could not marshal message payload for history: %v\n", marshalErr)
+					continue
+				}
+				unmarshalErr := json.Unmarshal(fallbackPayloadBytes, &contentPart) // unmarshal into typed struct
+				if unmarshalErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: fallback - could not unmarshal message payload into genai.Content: %v\n", unmarshalErr)
+					continue
+				}
+				initialHistoryForAgent = append(initialHistoryForAgent, &contentPart)
+			}
+
+		}
+		fmt.Printf("Loaded %d messages into agent history.\n", len(initialHistoryForAgent))
+	}
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  os.Getenv("GEMINI_API_KEY"),
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {
-		fmt.Printf("Error initializing client: %s\n", err.Error())
+		fmt.Printf("Error initializing genai client: %s\n", err.Error())
+		return err // Propagate error
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -70,20 +150,22 @@ func Code(conversationFilename string, modelName string) {
 		Add(CodegenTool)
 	systemPrompt, err := readFileContent(".smolcode/system.md")
 	if err != nil {
-		fmt.Printf("Error reading smolcode.md: %s\n", err.Error())
-		return
+		fmt.Printf("Error reading system.md: %s\n", err.Error())
+		return err // Propagate error
 	}
 
-	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistory, "main")
+	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistoryForAgent, loadedConv, "main")
 	if modelName != "" {
 		agent.ChooseModel(modelName)
 	}
 	if err := agent.Run(ctx); err != nil {
-		fmt.Printf("Error: %s\n", err.Error())
+		fmt.Printf("Error running agent: %s\n", err.Error())
+		// Potentially return this error if Code() should propagate agent.Run errors
 	}
+	return nil // Successful completion of Code function
 }
 
-func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content, name string) *Agent {
+func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content, convData *history.Conversation, name string) *Agent {
 	if name == "" {
 		name = "main"
 	}
@@ -99,15 +181,17 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		// cachedContent and systemPromptModTime are zero initially
 	}
 
-	persConv, err := history.New()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not initialize persistent conversation: %v\n", err)
-		// We can decide if we want to return an error here or proceed with a nil persistentConversation
-		// For now, let's proceed with nil if initialization fails, but log the error.
-		agent.persistentConversation = nil
-	} else {
-		agent.persistentConversation = persConv
+	// convData is expected to be non-nil, as Code() is responsible for loading or creating it.
+	// If Code() failed to provide a valid history.Conversation, it should have returned an error.
+	if convData == nil {
+		// This should not happen if Code() is functioning correctly.
+		// Log a critical error and a (nil) agent will be returned, likely leading to a crash.
+		// This indicates a programming error in the calling sequence.
+		fmt.Fprintf(os.Stderr, "CRITICAL: NewAgent received nil convData. This should be handled by the caller.\n")
+		// Allow agent to be returned, but persistentConversation will be nil, causing issues later.
+		// Ideally, NewAgent could return an error too, or Code() ensures this is impossible.
 	}
+	agent.persistentConversation = convData
 
 	// Caching logic has been moved to runInference
 
@@ -319,20 +403,12 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 	}
 
-	// Save conversation history after the loop exits
-	fmt.Println("\nExiting... Saving conversation history to smolcode.json")
-	historyJSON, err := json.MarshalIndent(agent.history, "", "  ")
-	if err != nil {
-		fmt.Printf("Error marshalling conversation history: %v\n", err)
-		// Decide if we should return the error or just log it and exit cleanly
+	// Final save of conversation to database on exit
+	fmt.Println("\nExiting... ensuring conversation is saved to database.")
+	if err := agent.persistFullConversationToDB(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: final attempt to persist conversation to DB failed: %v\n", err)
 	} else {
-		err = os.WriteFile("smolcode.json", historyJSON, 0644)
-		if err != nil {
-			fmt.Printf("Error writing conversation file smolcode.json: %v\n", err)
-			// Decide if we should return the error or just log it and exit cleanly
-		} else {
-			fmt.Println("Conversation history saved successfully.")
-		}
+		fmt.Println("Conversation saved to database successfully.")
 	}
 
 	return nil
@@ -520,25 +596,12 @@ func (agent *Agent) reload() error {
 		return fmt.Errorf("project build failed, aborting reload: %w", err)
 	}
 
-	// If build is successful, proceed with saving state and reloading
-	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("smolcode-%d.json", timestamp)
-
-	// Serialize conversation history to JSON
-	// Ensure agent.history is properly marshaled. It might need specific handling
-	// if genai.Content contains complex types or interfaces not directly serializable.
-	// Let's assume direct marshaling works for now, but this might need refinement.
-	historyJSON, err := json.MarshalIndent(agent.history, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal conversation history: %w", err)
+	// If build is successful, proceed with saving state to DB and reloading
+	agent.geminiMessage("Build successful. Ensuring current conversation is saved to database before reload...")
+	if err := agent.persistFullConversationToDB(); err != nil {
+		return fmt.Errorf("failed to persist conversation to DB before reload: %w", err)
 	}
-
-	// Write JSON to file
-	err = os.WriteFile(filename, historyJSON, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write conversation file %q: %w", filename, err)
-	}
-	fmt.Printf("Conversation saved to %s\n", filename)
+	agent.geminiMessage("Conversation state saved. Current conversation ID: %s", agent.persistentConversation.ID)
 
 	// Prepare arguments for the new process
 	goCmdPath, err := exec.LookPath("go")
@@ -547,7 +610,6 @@ func (agent *Agent) reload() error {
 	}
 
 	// Ensure the path to main.go is correct relative to the execution context
-	// If running from the project root, "cmd/smolcode/main.go" should be correct.
 	mainGoPath := "cmd/smolcode/main.go"
 
 	args := []string{
@@ -556,8 +618,8 @@ func (agent *Agent) reload() error {
 		"-tags",
 		"fts5",
 		mainGoPath,
-		"-c",
-		filename,
+		"-conversation-id",              // New flag
+		agent.persistentConversation.ID, // Pass the current conversation ID
 	}
 
 	// Use syscall.Exec to replace the current process
@@ -640,10 +702,16 @@ func (agent *Agent) persistFullConversationToDB() error {
 		// For now, let\'s assume we want to store the serializable representation (e.g., JSON).
 		// The history package itself handles the marshaling of messages when Save is called.
 		// So, we just need to append the *genai.Content objects directly.
-		// The history.Conversation.Append method takes interface{}, so *genai.Content is fine.
-		agent.persistentConversation.Append(content)
+		// Marshal genai.Content to []byte before appending
+		contentBytes, err := json.Marshal(content)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not marshal genai.Content to save to DB for content: %+v, Error: %v\n", content, err)
+			// Decide if we should skip this message or return an error for the whole persistence operation
+			continue // Skip this problematic message
+		}
+		agent.persistentConversation.Append(contentBytes) // Append the marshaled []byte
 	}
-	agent.trace("PersistToDB", map[string]string{"status": "appending_history", "count": fmt.Sprintf("%d", len(agent.history))})
+	agent.trace("PersistToDB", map[string]string{"status": "appending_history_as_bytes", "count": fmt.Sprintf("%d", len(agent.persistentConversation.Messages))})
 
 	// 3. Call history.Save(a.persistentConversation) to save to SQLite.
 	err := history.Save(agent.persistentConversation)
