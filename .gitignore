@@ -8,6 +8,4 @@ tmp/
 !.smolcode/system.md
 
 # Test artifacts
-output.tar
-test_archive.tar
-another_archive.tar
+*.tar
