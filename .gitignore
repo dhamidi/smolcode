@@ -10,3 +10,4 @@ tmp/
 # Test artifacts
 output.tar
 test_archive.tar
+another_archive.tar

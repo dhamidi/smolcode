@@ -188,11 +188,11 @@ func main() {
 func handleGenerateCommand(args []string) {
 	genCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 	archiveOutput := genCmd.Bool("archive", false, "Output a tar archive to stdout instead of writing files to disk.")
-	apiKey := genCmd.String("apikey", "", "API key for the codegen service. Overrides GEMINI_API_KEY/INCEPTION_API_KEY env vars.")
+	inceptionAPIKey := genCmd.String("inception-api-key", "", "API key for the Inception Labs codegen service. Overrides INCEPTION_API_KEY env var.")
 
 	genCmd.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go generate [flags] <instruction>\n")
-		fmt.Fprintf(os.Stderr, "Generates code based on an instruction.\n")
+		fmt.Fprintf(os.Stderr, "Generates code based on an instruction using Inception Labs API.\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		genCmd.PrintDefaults()
 	}
@@ -205,17 +205,14 @@ func handleGenerateCommand(args []string) {
 	}
 	instruction := strings.Join(genCmd.Args(), " ") // Join all remaining args as the instruction
 
-	// Determine API Key
-	resolvedApiKey := *apiKey // Start with flag value
-	if resolvedApiKey == "" {
-		resolvedApiKey = os.Getenv("GEMINI_API_KEY")
-	}
+	// Determine Inception API Key for codegen
+	resolvedApiKey := *inceptionAPIKey // Start with flag value
 	if resolvedApiKey == "" {
 		resolvedApiKey = os.Getenv("INCEPTION_API_KEY")
 	}
 
 	if resolvedApiKey == "" {
-		log.Fatal("Error: API key is required. Set GEMINI_API_KEY or INCEPTION_API_KEY environment variable, or use --apikey flag.")
+		log.Fatal("Error: Inception API key is required for codegen. Set INCEPTION_API_KEY environment variable, or use --inception-api-key flag.")
 	}
 
 	generator := codegen.New(resolvedApiKey)
