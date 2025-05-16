@@ -77,28 +77,6 @@ func main() {
 
 	// Check if the first argument is "generate"
 	if len(os.Args) > 1 && os.Args[1] == "generate" {
-		// Pre-check for API key if the command is generate.
-		// We need to parse flags specifically for the generate command to check --inception-api-key.
-		// This is a bit tricky because flags are usually parsed within the handler.
-		// For this specific pre-check, we can do a preliminary parse.
-		genCmdFlags := flag.NewFlagSet("generate-precheck", flag.ContinueOnError) // ContinueOnError to avoid exiting here
-		apiKeyFlag := genCmdFlags.String("inception-api-key", "", "API key")
-		// Parse only known flags for generate command to find the api key flag if present.
-		// We don't want to exit on error here, just check the flag.
-		// This requires careful parsing of os.Args[2:] for the generate command args.
-		var relevantArgs []string
-		if len(os.Args) > 2 {
-			relevantArgs = os.Args[2:]
-		}
-		_ = genCmdFlags.Parse(relevantArgs) // Ignore error, we only care if the flag was set
-
-		envApiKey := os.Getenv("INCEPTION_API_KEY")
-		flagApiKey := *apiKeyFlag
-
-		if envApiKey == "" && flagApiKey == "" {
-			die("Error: Inception API key is required for the 'generate' command. Set INCEPTION_API_KEY environment variable, or use the --inception-api-key flag.")
-		}
-
 		handleGenerateCommand(os.Args[2:])
 		return // Exit after handling generate command
 	}
@@ -161,7 +139,6 @@ func main() {
 func handleGenerateCommand(args []string) {
 	genCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 	archiveOutput := genCmd.Bool("archive", false, "Output a tar archive to stdout instead of writing files to disk.")
-	inceptionAPIKey := genCmd.String("inception-api-key", "", "API key for the Inception Labs codegen service. Overrides INCEPTION_API_KEY env var.")
 	var existingFilePaths stringSliceFlag
 	genCmd.Var(&existingFilePaths, "existing-file", "Path to an existing file to provide as context (can be specified multiple times).")
 	genCmd.Var(&existingFilePaths, "f", "Shorthand for --existing-file.")
@@ -184,13 +161,7 @@ func handleGenerateCommand(args []string) {
 	}
 	instruction := strings.Join(genCmd.Args(), " ") // Join all remaining args as the instruction
 
-	// Determine Inception API Key for codegen
-	resolvedApiKey := *inceptionAPIKey // Start with flag value
-	if resolvedApiKey == "" {
-		resolvedApiKey = os.Getenv("INCEPTION_API_KEY")
-	}
-
-	generator := codegen.New(resolvedApiKey)
+	generator := codegen.New(os.Getenv("INCEPTION_API_KEY"))
 
 	// Process existing files
 	var existingFilesToPass []codegen.File
