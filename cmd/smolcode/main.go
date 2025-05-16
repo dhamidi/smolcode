@@ -44,6 +44,18 @@ func die(format string, a ...interface{}) {
 	os.Exit(1)
 }
 
+// stringSliceFlag is a custom flag type for accumulating multiple string values
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string {
+	return strings.Join(*s, ", ")
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 // TarballWriterFS implements codegen.WriteableFileSystem to write files into a tar archive.
 // It needs to be defined in a package that can import codegen, so main is fine.
 // Ensure this is placed before the main() function or in a way it's properly declared before use.
@@ -189,6 +201,9 @@ func handleGenerateCommand(args []string) {
 	genCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 	archiveOutput := genCmd.Bool("archive", false, "Output a tar archive to stdout instead of writing files to disk.")
 	inceptionAPIKey := genCmd.String("inception-api-key", "", "API key for the Inception Labs codegen service. Overrides INCEPTION_API_KEY env var.")
+	var existingFilePaths stringSliceFlag
+	genCmd.Var(&existingFilePaths, "existing-file", "Path to an existing file to provide as context (can be specified multiple times).")
+	genCmd.Var(&existingFilePaths, "f", "Shorthand for --existing-file.")
 
 	genCmd.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go generate [flags] <instruction>\n")
@@ -217,11 +232,19 @@ func handleGenerateCommand(args []string) {
 
 	generator := codegen.New(resolvedApiKey)
 
-	// For now, existingFiles is empty. This could be extended later.
-	var existingFiles []codegen.File
+	// Process existing files
+	var existingFilesToPass []codegen.File
+	for _, path := range existingFilePaths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			log.Fatalf("Error reading existing file %s: %v", path, err)
+		}
+		existingFilesToPass = append(existingFilesToPass, codegen.File{Path: path, Contents: content})
+		fmt.Fprintf(os.Stderr, "Providing existing file as context: %s\n", path)
+	}
 
 	fmt.Fprintf(os.Stderr, "Generating code with instruction: %s...\n", instruction)
-	generatedFiles, err := generator.GenerateCode(instruction, existingFiles)
+	generatedFiles, err := generator.GenerateCode(instruction, existingFilesToPass)
 	if err != nil {
 		log.Fatalf("Error generating code: %v", err)
 	}
