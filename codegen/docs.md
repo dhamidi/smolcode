@@ -58,14 +58,14 @@ type Generator struct {
 -   `GenerateCode(instruction string, existingFiles []File, desiredOutputFiles []DesiredFile) ([]File, error)`:
     -   Takes a natural language `instruction`, a slice of `existingFiles` (for context), and a slice of `desiredOutputFiles` specifying what to generate.
     -   For each `DesiredFile` in `desiredOutputFiles`:
-        -   It will make a separate API request using a Go function call (likely managed by a `sync.WaitGroup` for concurrency).
-        -   This request is made by calling a function (e.g., `makeSingleFileAPIRequest` in `api.go`).
-        -   The request to `makeSingleFileAPIRequest` will include:
+        -   It will make a separate API request for each `DesiredFile` using a Go routine, managed by a `sync.WaitGroup` for concurrency.
+        -   This request is made by calling the `makeChatCompletionsRequest` function in `api.go`.
+        -   The request to `makeChatCompletionsRequest` will include:
             -   The overall `instruction`.
             -   The full content of all `existingFiles`.
             -   The list of all `desiredOutputFiles` (paths and descriptions).
             -   The specific `DesiredFile` (path and description) currently being generated.
-    -   The `makeSingleFileAPIRequest` function (in `api.go`) returns the deserialized API response.
+    -   The `makeChatCompletionsRequest` function (in `api.go`) returns the entire deserialized `APIResponse` object.
     -   `codegen.go` then takes the raw content from the LLM's response (which should *only* be the file content) and uses it as the `Contents` for the corresponding `File` struct.
     -   Returns a slice of `File` structs representing the generated code and an error if any occurred during the process (e.g., if any of the concurrent API calls fail).
 -   `Write(files []File) error` (remains similar):
@@ -74,7 +74,7 @@ type Generator struct {
 
 ## API Interaction for Single File Generation (`api.go`)
 
-The function responsible for a single file generation request (e.g., `makeSingleFileAPIRequest` in `api.go`) handles the communication for one desired output file.
+The `makeChatCompletionsRequest` function in `api.go` is responsible for a single file generation request and handles the communication for one desired output file.
 
 ### API Endpoint
 
@@ -85,7 +85,7 @@ The function responsible for a single file generation request (e.g., `makeSingle
 
 The request to the API is a JSON object with the following key fields:
 
--   `model` (string): Specifies the model to use (e.g., `"mercury-coder-small"`).
+-   `model` (string): Specifies the model to use. This will be `"mercury-coder-small"`.
 -   `messages` (array of `APIRequestMessage` objects): Defines the conversation context.
     -   `APIRequestMessage`:
         -   `role` (string): Can be "system" or "user".
@@ -129,20 +129,20 @@ content of file1
             -   `APIResponseChoice`:
                 -   `Message` (`APIRequestMessage`): The actual message from the model. The generated file content is expected *directly* and *only* in `Message.Content`.
         -   `Error` (`*APIErrorDetail`): For API-specific errors.
-3.  **Return Value**: `api.go` returns this deserialized `APIResponse` object (or the relevant parts like `Message.Content` and any error) to the caller in `codegen.go`. **`api.go` does NOT parse the `Message.Content` further.**
+3.  **Return Value**: `api.go` returns the entire deserialized `APIResponse` object to the caller in `codegen.go`. **`api.go` does NOT parse the `Message.Content` further.**
 
 ## Data Flow Summary (New Process)
 
 1.  User calls `generator.GenerateCode(instruction, existingFiles, desiredOutputFiles)`.
 2.  `codegen.go` iterates through each `DesiredFile` in `desiredOutputFiles`.
 3.  For each `DesiredFile`, `codegen.go` launches a Go routine:
-    a.  Inside the Go routine, it calls a function in `api.go` (e.g., `makeSingleFileAPIRequest`).
+    a.  Inside the Go routine, it calls the `makeChatCompletionsRequest` function in `api.go`.
     b.  This function is passed: the `apiKey`, the overall `instruction`, all `existingFiles`, all `desiredOutputFiles` (paths and descriptions), and the *current* `DesiredFile` (path and description) to be generated.
     c.  `api.go` constructs the specific prompt for this single file, including the critical system message demanding only file content in response.
     d.  `api.go` sends this request as a POST to the Inceptionlabs Chat Completions API.
     e.  `api.go` receives the HTTP response and deserializes it.
-    f.  `api.go` returns the deserialized response (specifically, the `Message.Content` which *is* the file content, and any error) to `codegen.go`.
-4.  `codegen.go` (in the Go routine) receives the raw file content string. It creates a `codegen.File` struct, setting the `Path` from the `DesiredFile` and `Contents` as `[]byte(rawFileContentString)`.
+    f.  `api.go` returns the entire deserialized `APIResponse` object to `codegen.go`.
+4.  `codegen.go` (in the Go routine) receives the `APIResponse` object. It extracts the raw file content string from `APIResponse.Choices[0].Message.Content`. It then creates a `codegen.File` struct, setting the `Path` from the `DesiredFile` and `Contents` as `[]byte(rawFileContentString)`.
 5.  After all Go routines complete (managed by a waitgroup), `codegen.go` collects all the generated `File` structs.
 6.  `GenerateCode` returns the slice of `[]File` to the caller.
 7.  The caller can then use `generator.Write(files)` to save the generated files to disk.
