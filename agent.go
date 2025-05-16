@@ -97,16 +97,16 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 				// This case implies that the payload stored in the DB (and loaded by history.Load)
 				// was not []byte. This could happen if old data exists or if there's a mismatch
 				// in saving logic. For robustness, try the map[string]interface{} conversion as a fallback.
-				fmt.Fprintf(os.Stderr, "Warning: message payload in DB was not []byte (type: %T). Attempting fallback conversion.\n", msgWrapper.Payload)
+				// fmt.Fprintf(os.Stderr, "Warning: message payload in DB was not []byte (type: %T). Attempting fallback conversion.\n", msgWrapper.Payload) // Commented out
 				var contentPart genai.Content
 				fallbackPayloadBytes, marshalErr := json.Marshal(msgWrapper.Payload) // marshal the map/value
 				if marshalErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: fallback - could not marshal message payload for history: %v\n", marshalErr)
+					// fmt.Fprintf(os.Stderr, "Warning: fallback - could not marshal message payload for history: %v\n", marshalErr) // Commented out
 					continue
 				}
 				unmarshalErr := json.Unmarshal(fallbackPayloadBytes, &contentPart) // unmarshal into typed struct
 				if unmarshalErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: fallback - could not unmarshal message payload into genai.Content: %v\n", unmarshalErr)
+					// fmt.Fprintf(os.Stderr, "Warning: fallback - could not unmarshal message payload into genai.Content: %v\n", unmarshalErr) // Commented out
 					continue
 				}
 				initialHistoryForAgent = append(initialHistoryForAgent, &contentPart)
