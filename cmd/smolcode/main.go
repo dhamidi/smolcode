@@ -60,16 +60,18 @@ func main() {
 	}
 
 	// Default behavior (original functionality)
-	var conversationPath string
-	// Need to use a new flag set for the default command to avoid conflicts
-	// if we later add flags to the 'plan' subcommand.
-	defaultCmd := flag.NewFlagSet("smolcode", flag.ExitOnError)
-	defaultCmd.StringVar(&conversationPath, "conversation", "", "Path to a JSON file to initialize the conversation")
-	defaultCmd.StringVar(&conversationPath, "c", "", "Path to a JSON file to initialize the conversation (shorthand)")
-
+	var conversationID string
+	var newConversation bool
 	var modelName string
+
+	// Need to use a new flag set for the default command to avoid conflicts
+	defaultCmd := flag.NewFlagSet("smolcode", flag.ExitOnError)
+	defaultCmd.StringVar(&conversationID, "conversation-id", "", "ID of the conversation to load or continue")
+	defaultCmd.StringVar(&conversationID, "cid", "", "ID of the conversation to load or continue (shorthand)")
+	defaultCmd.BoolVar(&newConversation, "new", false, "Start a new conversation explicitly")
+
 	defaultCmd.StringVar(&modelName, "model", "", "The name of the model to use")
-	defaultCmd.StringVar(&modelName, "m", "", "The name of the model to use")
+	defaultCmd.StringVar(&modelName, "m", "", "The name of the model to use (shorthand)")
 
 	// Parse flags specifically for the default command
 	// Note: We parse from os.Args[1:] because os.Args[0] is the program name.
@@ -83,7 +85,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	smolcode.Code(conversationPath, modelName)
+	if err := smolcode.Code(conversationID, modelName, newConversation); err != nil {
+		die("Error running smol-agent: %v", err)
+	}
 }
 
 // handlePlanCommand processes subcommands for the 'plan' feature.
