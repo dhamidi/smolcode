@@ -60,15 +60,16 @@ func main() {
 	}
 
 	// Default behavior (original functionality)
-	var conversationID string
-	var newConversation bool
+	var specificIDToLoad string // Renamed from conversationID
+	var continueLatest bool     // New flag
 	var modelName string
 
 	// Need to use a new flag set for the default command to avoid conflicts
 	defaultCmd := flag.NewFlagSet("smolcode", flag.ExitOnError)
-	defaultCmd.StringVar(&conversationID, "conversation-id", "", "ID of the conversation to load or continue")
-	defaultCmd.StringVar(&conversationID, "cid", "", "ID of the conversation to load or continue (shorthand)")
-	defaultCmd.BoolVar(&newConversation, "new", false, "Start a new conversation explicitly")
+	defaultCmd.StringVar(&specificIDToLoad, "conversation-id", "", "ID of a specific conversation to load or continue")
+	defaultCmd.StringVar(&specificIDToLoad, "cid", "", "ID of a specific conversation to load or continue (shorthand)")
+	defaultCmd.BoolVar(&continueLatest, "continue", false, "Continue the latest conversation")
+	defaultCmd.BoolVar(&continueLatest, "c", false, "Continue the latest conversation (shorthand)")
 
 	defaultCmd.StringVar(&modelName, "model", "", "The name of the model to use")
 	defaultCmd.StringVar(&modelName, "m", "", "The name of the model to use (shorthand)")
@@ -76,6 +77,28 @@ func main() {
 	// Parse flags specifically for the default command
 	// Note: We parse from os.Args[1:] because os.Args[0] is the program name.
 	defaultCmd.Parse(os.Args[1:])
+
+	// Determine arguments for smolcode.Code based on flags
+	var conversationIDForAgent string
+	var forceNewForAgent bool
+
+	if specificIDToLoad != "" {
+		// User specified a specific conversation ID
+		conversationIDForAgent = specificIDToLoad
+		forceNewForAgent = false
+		if continueLatest {
+			// Warn if both --continue and a specific ID are given, specific ID takes precedence.
+			fmt.Fprintln(os.Stderr, "Warning: Both --continue (-c) and --conversation-id (-cid) were provided. Using the specific ID.")
+		}
+	} else if continueLatest {
+		// User specified to continue the latest conversation
+		conversationIDForAgent = ""
+		forceNewForAgent = false
+	} else {
+		// Default behavior: start a new conversation
+		conversationIDForAgent = ""
+		forceNewForAgent = true
+	}
 
 	// Ensure no plan subcommands slipped through if "plan" wasn't the first arg.
 	// This prevents `smolcode -c file.json plan new myplan` from working unexpectedly.
@@ -85,7 +108,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := smolcode.Code(conversationID, modelName, newConversation); err != nil {
+	if err := smolcode.Code(conversationIDForAgent, modelName, forceNewForAgent); err != nil {
 		die("Error running smol-agent: %v", err)
 	}
 }
