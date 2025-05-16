@@ -59,13 +59,14 @@ func Code(conversationFilename string, modelName string) {
 		Add(ReadFileTool).
 		Add(ListFilesTool).
 		Add(EditFileTool).
-		Add(WriteFileTool). // Added WriteFileTool
+		Add(WriteFileTool).
 		Add(CreateCheckpointTool).
 		Add(ListChangesTool).
 		Add(RunCommandTool).
 		Add(SearchCodeTool).
 		Add(CreateMemoryTool).
 		Add(RecallMemoryTool).
+		Add(ForgetMemoryTool).
 		Add(PlannerTool).
 		Add(CodegenTool)
 	systemPrompt, err := readFileContent(".smolcode/system.md")
