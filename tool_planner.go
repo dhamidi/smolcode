@@ -42,14 +42,14 @@ var PlannerTool = &ToolDefinition{
 				Name: "manage_plan",
 				Description: strings.TrimSpace(`
 Manages development plans. Use this tool to create, inspect, modify, and query the status of plans and their steps.
-Plans are stored in '.smolcode/plans/'. Always specify the plan name.
+Plans are stored in a SQLite database at '.smolcode/plans.db'. Always specify the plan name.
 `),
 				Parameters: &genai.Schema{
 					Type: genai.TypeObject,
 					Properties: map[string]*genai.Schema{
 						"plan_name": {
 							Type:        genai.TypeString,
-							Description: "The name of the plan to manage (e.g., 'main', 'feature-x'). This corresponds to the filename without .json.",
+							Description: "The name of the plan to manage (e.g., 'main', 'feature-x'). This corresponds to the unique ID in the plans database.",
 						},
 						"action": {
 							Type: genai.TypeString,
