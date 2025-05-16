@@ -133,9 +133,13 @@ func TestPlanner_Get_Basic(t *testing.T) {
 	defer cleanup()
 
 	planName := "test-plan-get"
-	_, err := planner.Create(planName)
+	createdPlan, err := planner.Create(planName)
 	if err != nil {
 		t.Fatalf("Setup failed: Could not create plan: %v", err)
+	}
+	err = planner.Save(createdPlan)
+	if err != nil {
+		t.Fatalf("Setup failed: Could not save plan: %v", err)
 	}
 
 	plan, err := planner.Get(planName)

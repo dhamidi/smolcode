@@ -104,13 +104,13 @@ To record the extracted lesson:
 
 1. **Use the `create_memory` tool.**
 2. **Provide a `factID`**:
-    - The `factID` **must start with the prefix `lesson-`**.
-    - The rest of the `factID` should be a short, descriptive, kebab-case identifier.
-    - Strive for uniqueness but also predictability. For example, if the lesson is about a build command, `lesson-project-build-command-variant` or `lesson-user-preference-build-command` could be appropriate.
-    - If updating an existing lesson, you can reuse the `factID` (including the `lesson-` prefix).
+   - The `factID` **must start with the prefix `lesson-`**.
+   - The rest of the `factID` should be a short, descriptive, kebab-case identifier.
+   - Strive for uniqueness but also predictability. For example, if the lesson is about a build command, `lesson-project-build-command-variant` or `lesson-user-preference-build-command` could be appropriate.
+   - If updating an existing lesson, you can reuse the `factID` (including the `lesson-` prefix).
 3. **Provide the `fact`**:
-    - This is the lesson content you synthesized.
-    - **Crucially, it must start with "Lesson: "** as per the formatting rule.
+   - This is the lesson content you synthesized.
+   - **Crucially, it must start with "Lesson: "** as per the formatting rule.
 
 **Example JSON for a `create_memory` tool call part:**
 
@@ -136,8 +136,9 @@ When you need to access previously learned lessons to inform your actions or pla
 
 1. **Use the `recall_memory` tool.**
 2. **Include the word "lesson" in your search query** passed to the `about` parameter. This helps filter for explicitly recorded lessons.
-    - For example, if you are about to perform a build, you might query: "lesson about build command" or "project build lesson".
-    - If you remember a specific `factID` (which will start with `lesson-`), you can use that directly.
+   - For example, if you are about to perform a build, you might query: "lesson about build command" or "project build lesson".
+   - If you remember a specific `factID` (which will start with `lesson-`), you can use that directly.
+3. If the first usage of the `recall_memory` doesn't find a result, simplify the search phrase by making it less specific by one degree.
 
 **Example JSON for a `recall_memory` tool call part:**
 
