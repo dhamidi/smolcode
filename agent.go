@@ -193,7 +193,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 	}
 	agent.persistentConversation = convData
 
-	// Caching logic has been moved to runInference
+	// Caching logic has been moved to runInference (see runInference func)
 
 	return agent
 }
