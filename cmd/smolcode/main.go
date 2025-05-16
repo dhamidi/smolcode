@@ -226,12 +226,15 @@ func handleGenerateCommand(args []string) {
 	var existingFilePaths stringSliceFlag
 	genCmd.Var(&existingFilePaths, "existing-file", "Path to an existing file to provide as context (can be specified multiple times).")
 	genCmd.Var(&existingFilePaths, "f", "Shorthand for --existing-file.")
+	var desiredFileSpecs stringSliceFlag
+	genCmd.Var(&desiredFileSpecs, "desired", "Desired file to generate, format 'filepath:description' (can be specified multiple times).")
 
 	genCmd.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go generate [flags] <instruction>\n")
 		fmt.Fprintf(os.Stderr, "Generates code based on an instruction using Inception Labs API.\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		genCmd.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExample for --desired: --desired \"pkg/utils/helpers.go:A utility package for common helper functions, including string manipulation and error handling.\"\n")
 	}
 
 	genCmd.Parse(args)
@@ -261,8 +264,19 @@ func handleGenerateCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "Providing existing file as context: %s\n", path)
 	}
 
+	// Process desired files
+	var desiredFiles []codegen.DesiredFile
+	for _, spec := range desiredFileSpecs {
+		parts := strings.SplitN(spec, ":", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			log.Fatalf("Invalid format for --desired flag: '%s'. Expected 'filepath:description'.", spec)
+		}
+		desiredFiles = append(desiredFiles, codegen.DesiredFile{Path: strings.TrimSpace(parts[0]), Description: strings.TrimSpace(parts[1])})
+		fmt.Fprintf(os.Stderr, "Requesting desired file: %s (Description: %s)\n", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+	}
+
 	fmt.Fprintf(os.Stderr, "Generating code with instruction: %s...\n", instruction)
-	generatedFiles, err := generator.GenerateCode(instruction, existingFilesToPass, []codegen.DesiredFile{})
+	generatedFiles, err := generator.GenerateCode(instruction, existingFilesToPass, desiredFiles)
 	if err != nil {
 		log.Fatalf("Error generating code: %v", err)
 	}
