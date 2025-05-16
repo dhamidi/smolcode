@@ -188,7 +188,7 @@ func main() {
 func handleGenerateCommand(args []string) {
 	genCmd := flag.NewFlagSet("generate", flag.ExitOnError)
 	archiveOutput := genCmd.Bool("archive", false, "Output a tar archive to stdout instead of writing files to disk.")
-	apiKey := genCmd.String("apikey", os.Getenv("GEMINI_API_KEY"), "API key for the codegen service. Defaults to GEMINI_API_KEY env var.")
+	apiKey := genCmd.String("apikey", "", "API key for the codegen service. Overrides GEMINI_API_KEY/INCEPTION_API_KEY env vars.")
 
 	genCmd.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go generate [flags] <instruction>\n")
@@ -205,11 +205,20 @@ func handleGenerateCommand(args []string) {
 	}
 	instruction := strings.Join(genCmd.Args(), " ") // Join all remaining args as the instruction
 
-	if *apiKey == "" {
-		log.Fatal("Error: API key is required. Set GEMINI_API_KEY environment variable, or use --apikey flag.")
+	// Determine API Key
+	resolvedApiKey := *apiKey // Start with flag value
+	if resolvedApiKey == "" {
+		resolvedApiKey = os.Getenv("GEMINI_API_KEY")
+	}
+	if resolvedApiKey == "" {
+		resolvedApiKey = os.Getenv("INCEPTION_API_KEY")
 	}
 
-	generator := codegen.New(*apiKey)
+	if resolvedApiKey == "" {
+		log.Fatal("Error: API key is required. Set GEMINI_API_KEY or INCEPTION_API_KEY environment variable, or use --apikey flag.")
+	}
+
+	generator := codegen.New(resolvedApiKey)
 
 	// For now, existingFiles is empty. This could be extended later.
 	var existingFiles []codegen.File
