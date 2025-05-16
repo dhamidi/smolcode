@@ -327,6 +327,9 @@ func (agent *Agent) Run(ctx context.Context) error {
 			userMessage := genai.NewContentFromText(userInput, genai.RoleUser)
 			if isContentEmpty(userMessage) {
 				agent.skipMessage("User input is empty, not adding to history.")
+				// Continue to next iteration to re-prompt user, skip inference for empty input
+				readUserInput = true
+				continue
 			} else {
 				agent.history = append(agent.history, userMessage)
 				if err := agent.persistFullConversationToDB(); err != nil {
