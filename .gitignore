@@ -6,3 +6,6 @@
 tmp/
 .smolcode/*
 !.smolcode/system.md
+
+# Test artifacts
+*.tar

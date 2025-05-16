@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestMakeAPIRequest_Success(t *testing.T) {
+func TestMakeChatCompletionsRequest_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {
 			t.Errorf("Expected to request /v1/chat/completions, got %s", r.URL.Path)
@@ -26,7 +26,7 @@ func TestMakeAPIRequest_Success(t *testing.T) {
 			t.Errorf("Expected Content-Type header 'application/json', got %s", contentTypeHeader)
 		}
 
-		// Check request body
+		// Check request body - new prompt structure
 		var reqBody APIRequest
 		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 			t.Fatalf("Failed to decode request body: %v", err)
@@ -37,90 +37,38 @@ func TestMakeAPIRequest_Success(t *testing.T) {
 		if len(reqBody.Messages) != 2 {
 			t.Fatalf("Expected 2 messages, got %d", len(reqBody.Messages))
 		}
-		if reqBody.Messages[0].Role != "system" {
-			t.Errorf("Expected first message role 'system', got %s", reqBody.Messages[0].Role)
-		}
-		userMsgContent := "Create a new Go function.\n\nExisting files:\n--- main.go ---\npackage main\nfunc main() {}\n"
-		if reqBody.Messages[1].Role != "user" || !strings.Contains(reqBody.Messages[1].Content, "Create a new Go function.") || !strings.Contains(reqBody.Messages[1].Content, userMsgContent) {
-			t.Errorf("Unexpected user message content: %s", reqBody.Messages[1].Content)
+		// System Message Check (new content)
+		expectedSystemMessage := "You are a helpful assistant that generates code. You will be given an overall instruction, a set of existing reference files, a list of all files to be generated with their descriptions, and the specific file you need to generate now. Your response MUST ONLY be the complete text content for the requested file. Do NOT include any other explanatory text, markdown formatting, or any preamble. Only the raw file content."
+		if reqBody.Messages[0].Role != "system" || reqBody.Messages[0].Content != expectedSystemMessage {
+			t.Errorf("Unexpected system message. Role: %s, Content: %s", reqBody.Messages[0].Role, reqBody.Messages[0].Content)
 		}
 
-		// Send response
-		type testFile struct { // Ad-hoc struct for test response
-			Path     string `json:"path"`
-			Contents string `json:"contents"`
+		// User Message Check (new structure)
+		userMsgContent := reqBody.Messages[1].Content
+		if reqBody.Messages[1].Role != "user" {
+			t.Errorf("Expected second message role 'user', got %s", reqBody.Messages[1].Role)
 		}
-		respFilesWithStringContents := []testFile{
-			{Path: "new_func.go", Contents: "package main\n\nfunc newFunc() {}"},
+		if !strings.Contains(userMsgContent, "Overall instruction:\nCreate a new Go function.") {
+			t.Errorf("User message missing overall instruction. Got: %s", userMsgContent)
 		}
-		respFilesJSON, _ := json.Marshal(respFilesWithStringContents)
+		if !strings.Contains(userMsgContent, "Existing files (for context):\n--- main.go ---\npackage main\nfunc main() {}\n") {
+			t.Errorf("User message missing existing files. Got: %s", userMsgContent)
+		}
+		if !strings.Contains(userMsgContent, "Desired output files to be generated:\n- new_func.go: A new Go function\n- helper.go: A helper utility\n") {
+			t.Errorf("User message missing desired output files list. Got: %s", userMsgContent)
+		}
+		if !strings.Contains(userMsgContent, "Please generate the content for the following file:\nPath: new_func.go\nDescription: A new Go function") {
+			t.Errorf("User message missing current file indication. Got: %s", userMsgContent)
+		}
+
+		// Send response (raw content, not JSON of files)
+		rawGeneratedContent := "package main\n\nfunc newFuncGenerated() {}"
 		apiResp := APIResponse{
 			Choices: []APIResponseChoice{
 				{
 					Message: APIRequestMessage{
 						Role:    "assistant",
-						Content: string(respFilesJSON),
-					},
-				},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(apiResp)
-	}))
-	defer server.Close()
-
-	// Override the global API URL base to point to the test server
-	originalChatEndpoint := chatCompletionsEndpoint               // Store original
-	chatCompletionsEndpoint = server.URL + "/v1/chat/completions" // Need to re-assign this as it includes the base
-	defer func() {
-		chatCompletionsEndpoint = originalChatEndpoint // Restore original
-	}()
-
-	existingFiles := []File{
-		{Path: "main.go", Contents: []byte("package main\nfunc main() {}")},
-	}
-	files, err := makeAPIRequest("test-key", "Create a new Go function.", existingFiles)
-	if err != nil {
-		t.Fatalf("makeAPIRequest failed: %v", err)
-	}
-
-	if len(files) != 1 {
-		t.Fatalf("Expected 1 file, got %d", len(files))
-	}
-	if files[0].Path != "new_func.go" {
-		t.Errorf("Expected file path 'new_func.go', got %s", files[0].Path)
-	}
-	expectedContents := "package main\n\nfunc newFunc() {}"
-	if string(files[0].Contents) != expectedContents {
-		t.Errorf("Expected file contents %q, got %q", expectedContents, string(files[0].Contents))
-	}
-}
-
-func TestMakeAPIRequest_SuccessWithLeadingText(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Basic validation, more comprehensive checks in TestMakeAPIRequest_Success
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Errorf("Expected to request /v1/chat/completions, got %s", r.URL.Path)
-		}
-
-		type testFile struct { // Ad-hoc struct for test response
-			Path     string `json:"path"`
-			Contents string `json:"contents"`
-		}
-		respFilesWithStringContents := []testFile{
-			{Path: "test_output.go", Contents: "package test"},
-		}
-		respFilesJSON, _ := json.Marshal(respFilesWithStringContents)
-
-		// Simulate leading text before the JSON block
-		rawContent := fmt.Sprintf("Here is your generated code:\n```json\n%s\n```\nSome trailing remarks.", string(respFilesJSON))
-
-		apiResp := APIResponse{
-			Choices: []APIResponseChoice{
-				{
-					Message: APIRequestMessage{
-						Role:    "assistant",
-						Content: rawContent,
+						Content: rawGeneratedContent,
 					},
 				},
 			},
@@ -136,23 +84,33 @@ func TestMakeAPIRequest_SuccessWithLeadingText(t *testing.T) {
 		chatCompletionsEndpoint = originalChatEndpoint
 	}()
 
-	files, err := makeAPIRequest("test-key", "test instruction with leading text", nil)
+	existingFiles := []File{
+		{Path: "main.go", Contents: []byte("package main\nfunc main() {}")},
+	}
+	allDesiredFiles := []DesiredFile{
+		{Path: "new_func.go", Description: "A new Go function"},
+		{Path: "helper.go", Description: "A helper utility"},
+	}
+	currentFileToGenerate := DesiredFile{Path: "new_func.go", Description: "A new Go function"}
+
+	resp, err := makeChatCompletionsRequest("test-key", "Create a new Go function.", existingFiles, allDesiredFiles, currentFileToGenerate)
 	if err != nil {
-		t.Fatalf("makeAPIRequest failed: %v", err)
+		t.Fatalf("makeChatCompletionsRequest failed: %v", err)
 	}
 
-	if len(files) != 1 {
-		t.Fatalf("Expected 1 file, got %d", len(files))
+	if resp == nil {
+		t.Fatalf("Expected a response, got nil")
 	}
-	if files[0].Path != "test_output.go" {
-		t.Errorf("Expected file path 'test_output.go', got %s", files[0].Path)
+	if len(resp.Choices) != 1 {
+		t.Fatalf("Expected 1 choice, got %d", len(resp.Choices))
 	}
-	if string(files[0].Contents) != "package test" {
-		t.Errorf("Expected file contents %q, got %q", "package test", string(files[0].Contents))
+	expectedContent := "package main\n\nfunc newFuncGenerated() {}"
+	if resp.Choices[0].Message.Content != expectedContent {
+		t.Errorf("Expected response content %q, got %q", expectedContent, resp.Choices[0].Message.Content)
 	}
 }
 
-func TestMakeAPIRequest_ErrorStatus(t *testing.T) {
+func TestMakeChatCompletionsRequest_ErrorStatus(t *testing.T) {
 	testCases := []struct {
 		name        string
 		statusCode  int
@@ -206,9 +164,9 @@ func TestMakeAPIRequest_ErrorStatus(t *testing.T) {
 				chatCompletionsEndpoint = originalChatEndpoint
 			}()
 
-			_, err := makeAPIRequest("test-key", "test instruction", nil)
+			_, err := makeChatCompletionsRequest("test-key", "test instruction", nil, nil, DesiredFile{})
 			if err == nil {
-				t.Fatalf("makeAPIRequest was expected to fail, but it did not")
+				t.Fatalf("makeChatCompletionsRequest was expected to fail, but it did not")
 			}
 			if !strings.Contains(err.Error(), tc.expectedErr) {
 				t.Errorf("Expected error message to contain %q, got %q", tc.expectedErr, err.Error())
@@ -217,7 +175,7 @@ func TestMakeAPIRequest_ErrorStatus(t *testing.T) {
 	}
 }
 
-func TestMakeAPIRequest_MalformedResponse(t *testing.T) {
+func TestMakeChatCompletionsRequest_MalformedResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, "not a valid json")
@@ -230,7 +188,7 @@ func TestMakeAPIRequest_MalformedResponse(t *testing.T) {
 		chatCompletionsEndpoint = originalChatEndpoint
 	}()
 
-	_, err := makeAPIRequest("test-key", "test instruction", nil)
+	_, err := makeChatCompletionsRequest("test-key", "test instruction", nil, nil, DesiredFile{})
 	if err == nil {
 		t.Fatal("Expected an error due to malformed JSON response, got nil")
 	}
@@ -239,7 +197,7 @@ func TestMakeAPIRequest_MalformedResponse(t *testing.T) {
 	}
 }
 
-func TestMakeAPIRequest_NoChoicesInResponse(t *testing.T) {
+func TestMakeChatCompletionsRequest_NoChoicesInResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiResp := APIResponse{Choices: []APIResponseChoice{}}
 		w.Header().Set("Content-Type", "application/json")
@@ -253,43 +211,16 @@ func TestMakeAPIRequest_NoChoicesInResponse(t *testing.T) {
 		chatCompletionsEndpoint = originalChatEndpoint
 	}()
 
-	_, err := makeAPIRequest("test-key", "test instruction", nil)
-	if err == nil {
-		t.Fatal("Expected an error due to no choices in response, got nil")
+	apiResp, err := makeChatCompletionsRequest("test-key", "test instruction", nil, nil, DesiredFile{})
+	if err != nil { // Should not error at this stage
+		t.Fatalf("makeChatCompletionsRequest failed unexpectedly: %v", err)
 	}
-	if !strings.Contains(err.Error(), "API response did not contain expected choices or message content") {
-		t.Errorf("Expected error about no choices, got: %v", err)
+	if apiResp == nil {
+		t.Fatal("Expected a non-nil APIResponse, got nil")
 	}
-}
-
-func TestMakeAPIRequest_MalformedFileJSONInMessage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		apiResp := APIResponse{
-			Choices: []APIResponseChoice{
-				{
-					Message: APIRequestMessage{
-						Role:    "assistant",
-						Content: "this is not valid files json",
-					},
-				},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(apiResp)
-	}))
-	defer server.Close()
-
-	originalChatEndpoint := chatCompletionsEndpoint
-	chatCompletionsEndpoint = server.URL + "/v1/chat/completions"
-	defer func() {
-		chatCompletionsEndpoint = originalChatEndpoint
-	}()
-
-	_, err := makeAPIRequest("test-key", "test instruction", nil)
-	if err == nil {
-		t.Fatal("Expected an error due to malformed files JSON in message, got nil")
-	}
-	if !strings.Contains(err.Error(), "failed to unmarshal generated files from API response message content") {
-		t.Errorf("Expected error about unmarshalling files from message, got: %v", err)
+	// The presence of choices is checked by the calling function in codegen.go, not in api.go directly
+	// So, here we just check that the call itself was successful.
+	if len(apiResp.Choices) != 0 {
+		t.Errorf("Expected 0 choices in this test scenario, got %d", len(apiResp.Choices))
 	}
 }

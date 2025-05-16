@@ -139,13 +139,14 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 		Add(ReadFileTool).
 		Add(ListFilesTool).
 		Add(EditFileTool).
-		Add(WriteFileTool). // Added WriteFileTool
+		Add(WriteFileTool).
 		Add(CreateCheckpointTool).
 		Add(ListChangesTool).
 		Add(RunCommandTool).
 		Add(SearchCodeTool).
 		Add(CreateMemoryTool).
 		Add(RecallMemoryTool).
+		Add(ForgetMemoryTool).
 		Add(PlannerTool).
 		Add(CodegenTool)
 	systemPrompt, err := readFileContent(".smolcode/system.md")

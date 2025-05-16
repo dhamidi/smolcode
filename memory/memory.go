@@ -15,8 +15,6 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
-var ErrNotFound = errors.New("memory: not found")
-
 type MemoryManager struct {
 	db *sql.DB
 }
@@ -182,19 +180,4 @@ func (m *MemoryManager) SearchMemory(query string) ([]*Memory, error) {
 		memories = append(memories, mem)
 	}
 	return memories, nil
-}
-
-func (m *MemoryManager) Forget(id string) error {
-	deleteSQL := `DELETE FROM memories WHERE id = ?;`
-	result, err := m.db.Exec(deleteSQL, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete memory with id %s: %w", id, err)
-	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		fmt.Printf("Warning: could not get rows affected after deleting memory %s: %v\n", id, err)
-	} else if rowsAffected == 0 {
-		return fmt.Errorf("memory with id '%s' not found to forget: %w", id, ErrNotFound)
-	}
-	return nil
 }

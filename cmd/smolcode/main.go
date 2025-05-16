@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dhamidi/smolcode/memory" // Import the memory package
-
 	"github.com/dhamidi/smolcode"
+	"github.com/dhamidi/smolcode/codegen"
 	"github.com/dhamidi/smolcode/history" // Import the history package
+	"github.com/dhamidi/smolcode/memory"  // Import the memory package
 	"github.com/dhamidi/smolcode/planner" // Import the planner package
 )
 
@@ -40,6 +40,22 @@ func die(format string, a ...interface{}) {
 	os.Exit(1)
 }
 
+// stringSliceFlag is a custom flag type for accumulating multiple string values
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string {
+	return strings.Join(*s, ", ")
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
+// TarballWriterFS implements codegen.WriteableFileSystem to write files into a tar archive.
+// It needs to be defined in a package that can import codegen, so main is fine.
+// Ensure this is placed before the main() function or in a way it's properly declared before use.
+
 func main() {
 	// Check if the first argument is "plan"
 	if len(os.Args) > 1 && os.Args[1] == "plan" {
@@ -57,6 +73,34 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "history" {
 		handleHistoryCommand(os.Args[2:])
 		return // Exit after handling history command
+	}
+
+	// Check if the first argument is "generate"
+	if len(os.Args) > 1 && os.Args[1] == "generate" {
+		// Pre-check for API key if the command is generate.
+		// We need to parse flags specifically for the generate command to check --inception-api-key.
+		// This is a bit tricky because flags are usually parsed within the handler.
+		// For this specific pre-check, we can do a preliminary parse.
+		genCmdFlags := flag.NewFlagSet("generate-precheck", flag.ContinueOnError) // ContinueOnError to avoid exiting here
+		apiKeyFlag := genCmdFlags.String("inception-api-key", "", "API key")
+		// Parse only known flags for generate command to find the api key flag if present.
+		// We don't want to exit on error here, just check the flag.
+		// This requires careful parsing of os.Args[2:] for the generate command args.
+		var relevantArgs []string
+		if len(os.Args) > 2 {
+			relevantArgs = os.Args[2:]
+		}
+		_ = genCmdFlags.Parse(relevantArgs) // Ignore error, we only care if the flag was set
+
+		envApiKey := os.Getenv("INCEPTION_API_KEY")
+		flagApiKey := *apiKeyFlag
+
+		if envApiKey == "" && flagApiKey == "" {
+			die("Error: Inception API key is required for the 'generate' command. Set INCEPTION_API_KEY environment variable, or use the --inception-api-key flag.")
+		}
+
+		handleGenerateCommand(os.Args[2:])
+		return // Exit after handling generate command
 	}
 
 	// Default behavior (original functionality)
@@ -110,6 +154,104 @@ func main() {
 
 	if err := smolcode.Code(conversationIDForAgent, modelName, forceNewForAgent); err != nil {
 		die("Error running smol-agent: %v", err)
+	}
+}
+
+// handleGenerateCommand processes the 'generate' subcommand.
+func handleGenerateCommand(args []string) {
+	genCmd := flag.NewFlagSet("generate", flag.ExitOnError)
+	archiveOutput := genCmd.Bool("archive", false, "Output a tar archive to stdout instead of writing files to disk.")
+	inceptionAPIKey := genCmd.String("inception-api-key", "", "API key for the Inception Labs codegen service. Overrides INCEPTION_API_KEY env var.")
+	var existingFilePaths stringSliceFlag
+	genCmd.Var(&existingFilePaths, "existing-file", "Path to an existing file to provide as context (can be specified multiple times).")
+	genCmd.Var(&existingFilePaths, "f", "Shorthand for --existing-file.")
+	var desiredFileSpecs stringSliceFlag
+	genCmd.Var(&desiredFileSpecs, "desired", "Desired file to generate, format 'filepath:description' (can be specified multiple times).")
+
+	genCmd.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: go run cmd/smolcode/main.go generate [flags] <instruction>\n")
+		fmt.Fprintf(os.Stderr, "Generates code based on an instruction using Inception Labs API.\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		genCmd.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExample for --desired: --desired \"pkg/utils/helpers.go:A utility package for common helper functions, including string manipulation and error handling.\"\n")
+	}
+
+	genCmd.Parse(args)
+
+	if genCmd.NArg() < 1 {
+		genCmd.Usage()
+		log.Fatal("Error: Instruction argument is required for 'generate' command.")
+	}
+	instruction := strings.Join(genCmd.Args(), " ") // Join all remaining args as the instruction
+
+	// Determine Inception API Key for codegen
+	resolvedApiKey := *inceptionAPIKey // Start with flag value
+	if resolvedApiKey == "" {
+		resolvedApiKey = os.Getenv("INCEPTION_API_KEY")
+	}
+
+	generator := codegen.New(resolvedApiKey)
+
+	// Process existing files
+	var existingFilesToPass []codegen.File
+	for _, path := range existingFilePaths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			log.Fatalf("Error reading existing file %s: %v", path, err)
+		}
+		existingFilesToPass = append(existingFilesToPass, codegen.File{Path: path, Contents: content})
+		fmt.Fprintf(os.Stderr, "Providing existing file as context: %s\n", path)
+	}
+
+	// Process desired files
+	var desiredFiles []codegen.DesiredFile
+	for _, spec := range desiredFileSpecs {
+		parts := strings.SplitN(spec, ":", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			log.Fatalf("Invalid format for --desired flag: '%s'. Expected 'filepath:description'.", spec)
+		}
+		desiredFiles = append(desiredFiles, codegen.DesiredFile{Path: strings.TrimSpace(parts[0]), Description: strings.TrimSpace(parts[1])})
+		fmt.Fprintf(os.Stderr, "Requesting desired file: %s (Description: %s)\n", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+	}
+
+	fmt.Fprintf(os.Stderr, "Generating code with instruction: %s...\n", instruction)
+	generatedFiles, err := generator.GenerateCode(instruction, existingFilesToPass, desiredFiles)
+	if err != nil {
+		log.Fatalf("Error generating code: %v", err)
+	}
+	fmt.Fprintf(os.Stderr, "Code generation complete. Received %d file(s).\n", len(generatedFiles))
+
+	// Convert []codegen.File to []*codegen.File for WriteTo method
+	var generatedFilePtrs []*codegen.File
+	for i := range generatedFiles {
+		generatedFilePtrs = append(generatedFilePtrs, &generatedFiles[i])
+	}
+
+	if *archiveOutput {
+		fmt.Fprintf(os.Stderr, "Outputting to tar archive on stdout...\n")
+		tarFS := NewTarballWriterFS(os.Stdout)
+		defer func() {
+			if err := tarFS.Close(); err != nil {
+				// Log to stderr, as stdout is used for tar data
+				fmt.Fprintf(os.Stderr, "Error closing tar archive: %v\n", err)
+			}
+		}()
+
+		if err := generator.WriteTo(generatedFilePtrs, tarFS); err != nil {
+			// Error is logged to stderr by log.Fatalf, stdout should remain clean for tar
+			log.Fatalf("Error writing to tar archive: %v", err)
+		}
+		// tarFS.Close() is handled by defer
+		fmt.Fprintf(os.Stderr, "Tar archive written to stdout successfully.\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "Writing files to disk...\n")
+		if err := generator.Write(generatedFiles); err != nil {
+			log.Fatalf("Error writing files to disk: %v", err)
+		}
+		fmt.Fprintf(os.Stderr, "Files written to disk successfully:\n")
+		for _, f := range generatedFiles {
+			fmt.Fprintf(os.Stderr, "  - %s\n", f.Path)
+		}
 	}
 }
 
