@@ -129,7 +129,9 @@ func main() {
 	// 5. Create the JSON-RPC client
 	// The mcp.NewJSONRPC2ClientCodec comes from the mcp package we wrote earlier.
 	// Ensure github.com/dhamidi/smolcode/mcp is correct in imports.
-	client := rpc.NewClientWithCodec(mcp.NewJSONRPC2ClientCodec(spRwc))
+	codec := mcp.NewJSONRPC2ClientCodec(spRwc)
+	codec.Debug = true // Enable debug logging in the codec
+	client := rpc.NewClientWithCodec(codec)
 	defer func() {
 		log.Println("Closing RPC client and subprocess ReadWriteCloser...")
 		if err := client.Close(); err != nil {

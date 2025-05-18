@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/rpc"
 	"strings" // Added for HasPrefix
@@ -46,12 +47,13 @@ type JSONRPC2ClientCodec struct {
 	// isNotificationCall is a buffered channel to signal if the last WriteRequest was a notification.
 	// Used by ReadResponseHeader to determine if it should attempt to read a response.
 	wasLastCallNotification bool
+	Debug                   bool // Enables debug logging for this codec instance
 }
 
 var _ rpc.ClientCodec = (*JSONRPC2ClientCodec)(nil)
 
-// NewJSONRPC2ClientCodec returns a new rpc.ClientCodec using JSON-RPC 2.0 on conn.
-func NewJSONRPC2ClientCodec(conn io.ReadWriteCloser) rpc.ClientCodec {
+// NewJSONRPC2ClientCodec returns a new JSONRPC2ClientCodec using JSON-RPC 2.0 on conn.
+func NewJSONRPC2ClientCodec(conn io.ReadWriteCloser) *JSONRPC2ClientCodec {
 	return &JSONRPC2ClientCodec{
 		dec:             json.NewDecoder(conn),
 		enc:             json.NewEncoder(conn),
@@ -96,7 +98,7 @@ func (codec *JSONRPC2ClientCodec) WriteRequest(req *rpc.Request, params any) err
 	}
 
 	debugMsgBytes, _ := json.Marshal(jReq)
-	fmt.Printf("DEBUG: WriteRequest - sending: %s\n", string(debugMsgBytes))
+	codec.debug("WriteRequest - sending: %s", string(debugMsgBytes))
 	if err := codec.enc.Encode(jReq); err != nil {
 		return err
 	}
@@ -129,13 +131,13 @@ func (codec *JSONRPC2ClientCodec) ReadResponseHeader(resp *rpc.Response) error {
 		return nil
 	}
 
-	fmt.Println("DEBUG: ReadResponseHeader - attempting to decode response") // DEBUG
+	codec.debug("ReadResponseHeader - attempting to decode response") // DEBUG
 	var jResp JSONRPC2Response
 	if err := codec.dec.Decode(&jResp); err != nil {
-		fmt.Printf("DEBUG: ReadResponseHeader - decode error: %v\n", err) // DEBUG
+		codec.debug("ReadResponseHeader - decode error: %v", err) // DEBUG
 		return err
 	}
-	fmt.Printf("DEBUG: ReadResponseHeader - decoded response: %+v\n", jResp) // DEBUG
+	codec.debug("ReadResponseHeader - decoded response: %+v", jResp) // DEBUG
 
 	codec.reqMutex.Lock()
 	resp.Seq = jResp.ID
@@ -182,13 +184,13 @@ func (codec *JSONRPC2ClientCodec) ReadResponseHeader(resp *rpc.Response) error {
 // ReadResponseBody unmarshals the result from the response into the body.
 // It uses the lastResultForBody field set by the preceding ReadResponseHeader call.
 func (codec *JSONRPC2ClientCodec) ReadResponseBody(body any) error {
-	fmt.Printf("DEBUG: ReadResponseBody - entered. Body type: %T\n", body) // DEBUG
+	codec.debug("ReadResponseBody - entered. Body type: %T", body) // DEBUG
 	codec.bodyMutex.Lock()
 	resultToUse := codec.lastResultForBody
 	if resultToUse != nil { // Check before dereferencing for print
-		fmt.Printf("DEBUG: ReadResponseBody - resultToUse: %s\n", string(*resultToUse)) // DEBUG
+		codec.debug("ReadResponseBody - resultToUse: %s", string(*resultToUse)) // DEBUG
 	} else {
-		fmt.Println("DEBUG: ReadResponseBody - resultToUse is nil") // DEBUG
+		codec.debug("ReadResponseBody - resultToUse is nil") // DEBUG
 	}
 	codec.lastResultForBody = nil // Consume it, ensuring it's used only once
 	codec.bodyMutex.Unlock()
@@ -206,7 +208,7 @@ func (codec *JSONRPC2ClientCodec) ReadResponseBody(body any) error {
 		var dummy any
 		err := json.Unmarshal(*resultToUse, &dummy) // Consume into dummy
 		if err != nil {
-			fmt.Printf("DEBUG: ReadResponseBody - unmarshal to dummy error: %v\n", err) // DEBUG
+			codec.debug("ReadResponseBody - unmarshal to dummy error: %v", err) // DEBUG
 		}
 		return err
 	}
@@ -214,7 +216,7 @@ func (codec *JSONRPC2ClientCodec) ReadResponseBody(body any) error {
 	// Normal case: body is not nil, resultToUse is not nil.
 	err := json.Unmarshal(*resultToUse, body)
 	if err != nil {
-		fmt.Printf("DEBUG: ReadResponseBody - unmarshal error: %v\n", err) // DEBUG
+		codec.debug("ReadResponseBody - unmarshal error: %v", err) // DEBUG
 	}
 	return err // Return the original error
 }
@@ -244,4 +246,11 @@ func Dial(network, address string) (*rpc.Client, error) {
 	}
 	codec := NewJSONRPC2ClientCodec(conn)
 	return rpc.NewClientWithCodec(codec), nil
+}
+
+// debug conditionally prints a debug message if the Debug field is true.
+func (codec *JSONRPC2ClientCodec) debug(format string, args ...any) {
+	if codec.Debug {
+		log.Printf("DEBUG_CODEC: "+format, args...)
+	}
 }
