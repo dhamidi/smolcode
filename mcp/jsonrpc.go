@@ -95,6 +95,8 @@ func (codec *JSONRPC2ClientCodec) WriteRequest(req *rpc.Request, params any) err
 		codec.wasLastCallNotification = false
 	}
 
+	debugMsgBytes, _ := json.Marshal(jReq)
+	fmt.Printf("DEBUG: WriteRequest - sending: %s\n", string(debugMsgBytes))
 	if err := codec.enc.Encode(jReq); err != nil {
 		return err
 	}
