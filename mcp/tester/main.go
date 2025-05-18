@@ -203,5 +203,22 @@ func main() {
 	log.Println("RPC call 'tools/list' successful.")
 	fmt.Printf("Response from 'tools/list': %+v\n", listReply)
 
+	// 10. Prepare and send the 'tools/call' request for the 'fetch' tool
+	log.Println("Sending RPC request to 'tools/call' for 'fetch' tool...")
+	toolCallParams := map[string]interface{}{
+		"name": "fetch",
+		"arguments": map[string]interface{}{
+			"url": "https://news.ycombinator.com",
+			// Omitting other args to use defaults (max_length, start_index, raw)
+		},
+	}
+	var toolCallReply interface{}
+	err = client.Call("tools/call", toolCallParams, &toolCallReply)
+	if err != nil {
+		log.Fatalf("RPC call 'tools/call' for 'fetch' failed: %v", err)
+	}
+	log.Println("RPC call 'tools/call' for 'fetch' successful.")
+	fmt.Printf("Response from 'tools/call' (fetch):\n%+v\n", toolCallReply)
+
 	log.Println("MCP tester finished successfully.")
 }
