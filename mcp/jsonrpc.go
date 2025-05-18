@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/rpc"
+	"strings" // Added for HasPrefix
 	"sync"
 )
 
@@ -13,10 +14,10 @@ import (
 // As per net/rpc, the Params field is a single value (or a struct treated as one).
 // The ID is uint64 to match rpc.Request.Seq.
 type JSONRPC2Request struct {
-	JSONRPC string `json:"jsonrpc"` // must be "2.0"
-	Method  string `json:"method"`  // the method to invoke on the server
-	Params  any    `json:"params"`  // params used for invoking the method
-	ID      uint64 `json:"id"`      // request ID
+	JSONRPC string  `json:"jsonrpc"`      // must be "2.0"
+	Method  string  `json:"method"`       // the method to invoke on the server
+	Params  any     `json:"params"`       // params used for invoking the method
+	ID      *uint64 `json:"id,omitempty"` // request ID, omitempty for notifications
 }
 
 // JSONRPC2Response represents a JSON-RPC 2.0 response object.
@@ -41,6 +42,10 @@ type JSONRPC2ClientCodec struct {
 	// bodyMutex protects lastResultForBody
 	bodyMutex         sync.Mutex
 	lastResultForBody *json.RawMessage
+
+	// isNotificationCall is a buffered channel to signal if the last WriteRequest was a notification.
+	// Used by ReadResponseHeader to determine if it should attempt to read a response.
+	wasLastCallNotification bool
 }
 
 var _ rpc.ClientCodec = (*JSONRPC2ClientCodec)(nil)
@@ -53,23 +58,43 @@ func NewJSONRPC2ClientCodec(conn io.ReadWriteCloser) rpc.ClientCodec {
 		c:               conn,
 		pendingRequests: make(map[uint64]string),
 		// lastResultForBody is implicitly nil and bodyMutex is zero-valued
+		// wasLastCallNotification is implicitly false
 	}
 }
 
 // WriteRequest writes a JSON-RPC request to the connection.
 func (codec *JSONRPC2ClientCodec) WriteRequest(req *rpc.Request, params any) error {
-	codec.reqMutex.Lock()
-	codec.seq++
-	id := codec.seq
-	codec.pendingRequests[id] = req.ServiceMethod
-	codec.reqMutex.Unlock()
+	var jReq *JSONRPC2Request
 
-	jReq := &JSONRPC2Request{
-		JSONRPC: "2.0",
-		Method:  req.ServiceMethod,
-		Params:  params,
-		ID:      id,
+	if strings.HasPrefix(req.ServiceMethod, "notifications/") {
+		// This is a notification, ID should be nil (omitted)
+		// Do not track in pendingRequests, do not increment seq for this.
+		jReq = &JSONRPC2Request{
+			JSONRPC: "2.0",
+			Method:  req.ServiceMethod,
+			Params:  params,
+			ID:      nil, // ID is omitted for notifications
+		}
+		codec.wasLastCallNotification = true
+	} else {
+		// This is a regular request, assign an ID
+		codec.reqMutex.Lock()
+		codec.seq++
+		id := codec.seq
+		codec.pendingRequests[id] = req.ServiceMethod
+		codec.reqMutex.Unlock()
+
+		// Create a pointer to the id for the ID field
+		reqID := id
+		jReq = &JSONRPC2Request{
+			JSONRPC: "2.0",
+			Method:  req.ServiceMethod,
+			Params:  params,
+			ID:      &reqID,
+		}
+		codec.wasLastCallNotification = false
 	}
+
 	if err := codec.enc.Encode(jReq); err != nil {
 		return err
 	}
@@ -90,6 +115,18 @@ func (e *jsonError) Error() string {
 // ReadResponseHeader reads the JSON-RPC response header.
 // The header is the entire response object in JSON-RPC.
 func (codec *JSONRPC2ClientCodec) ReadResponseHeader(resp *rpc.Response) error {
+	// Check if the preceding WriteRequest was for a notification.
+	isNotification := codec.wasLastCallNotification
+	if isNotification {
+		// For notifications, the server MUST NOT send a response.
+		// net/rpc client still calls ReadResponseHeader.
+		// We return nil immediately. The resp object passed by net/rpc
+		// will have zero values for Seq, Error, ServiceMethod, which is acceptable.
+		// ReadResponseBody will subsequently be called; our implementation of it
+		// already handles the case where lastResultForBody is nil.
+		return nil
+	}
+
 	fmt.Println("DEBUG: ReadResponseHeader - attempting to decode response") // DEBUG
 	var jResp JSONRPC2Response
 	if err := codec.dec.Decode(&jResp); err != nil {
