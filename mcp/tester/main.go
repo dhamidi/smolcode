@@ -155,6 +155,20 @@ func main() {
 	log.Println("RPC call 'initialize' successful.")
 	fmt.Printf("Response from 'initialize': %+v\n", initReply)
 
+	// Send notifications/initialized notification
+	log.Println("Sending RPC notification to 'notifications/initialized'...")
+	// For notifications, params can be nil if no params are expected,
+	// or an empty map. The JSON-RPC spec for this notification shows no params.
+	var initializedReply interface{}                                       // For Call, a reply arg is needed. Server should not send a JSON-RPC response body for a notification.
+	err = client.Call("notifications/initialized", nil, &initializedReply) // Using nil for params
+	if err != nil {
+		// net/rpc's Call expects a response. If the server sends no JSON content back for a notification (correct behavior),
+		// the decoder might return EOF or similar. This may not be a fatal error for the notification itself.
+		log.Printf("RPC notification 'notifications/initialized' completed; err (may be expected for notifications): %v", err)
+	} else {
+		log.Println("RPC notification 'notifications/initialized' sent successfully (and a response was unexpectedly received).")
+	}
+
 	// 7. Prepare the 'tools/list' request
 	// As per spec: id 1, method: "tools/list", and an empty params object.
 	// The net/rpc client handles ID generation. We just provide method and params.

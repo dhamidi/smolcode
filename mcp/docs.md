@@ -41,6 +41,8 @@ var _ (rpc.ClientCodec) = &JSONRPC2ClientCodec{}
 
 # Initialization Message
 
+The client first needs to send this initialization message:
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -54,5 +56,16 @@ var _ (rpc.ClientCodec) = &JSONRPC2ClientCodec{}
       "version": "1.0.0"
     }
   }
+}
+```
+
+The server then proceeds with a response to this message.
+
+After receiving the response, the client then needs to confirm reception of the response with the following notification:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "notifications/initialized"
 }
 ```
