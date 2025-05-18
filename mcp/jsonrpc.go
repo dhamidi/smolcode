@@ -185,21 +185,33 @@ func (codec *JSONRPC2ClientCodec) ReadResponseBody(body any) error {
 	fmt.Printf("DEBUG: ReadResponseBody - entered. Body type: %T\n", body) // DEBUG
 	codec.bodyMutex.Lock()
 	resultToUse := codec.lastResultForBody
-	fmt.Printf("DEBUG: ReadResponseBody - resultToUse: %s\n", string(*resultToUse)) // DEBUG
-	codec.lastResultForBody = nil                                                   // Consume it, ensuring it's used only once
+	if resultToUse != nil { // Check before dereferencing for print
+		fmt.Printf("DEBUG: ReadResponseBody - resultToUse: %s\n", string(*resultToUse)) // DEBUG
+	} else {
+		fmt.Println("DEBUG: ReadResponseBody - resultToUse is nil") // DEBUG
+	}
+	codec.lastResultForBody = nil // Consume it, ensuring it's used only once
 	codec.bodyMutex.Unlock()
 
+	if resultToUse == nil { // No result was stored (e.g., error in response, or malformed response from header)
+		// This can happen if ReadResponseHeader encountered an error or no result was set.
+		// rpc.Client might call ReadResponseBody if ReadResponseHeader didn't return an error,
+		// even if resp.Error was set (which means no actual result payload).
+		// If body is also nil, nothing to do. If body is non-nil, it won't be populated.
+		return nil // Nothing to unmarshal.
+	}
+
 	if body == nil { // If rpc.Client Call/Go passes a nil reply value.
-		return nil
+		// We still need to consume the result from the decoder stream.
+		var dummy any
+		err := json.Unmarshal(*resultToUse, &dummy) // Consume into dummy
+		if err != nil {
+			fmt.Printf("DEBUG: ReadResponseBody - unmarshal to dummy error: %v\n", err) // DEBUG
+		}
+		return err
 	}
-	if resultToUse == nil { // No result was stored (e.g., error in response, or malformed response)
-		// This can happen if ReadResponseHeader encountered an error or no result.
-		// rpc.Client should not call ReadResponseBody if ReadResponseHeader returned an error
-		// or if resp.Error was set. If it does, and resultToUse is nil,
-		// unmarshalling nil into body would likely panic or fail.
-		// Returning nil is safe as body remains unchanged.
-		return nil
-	}
+
+	// Normal case: body is not nil, resultToUse is not nil.
 	err := json.Unmarshal(*resultToUse, body)
 	if err != nil {
 		fmt.Printf("DEBUG: ReadResponseBody - unmarshal error: %v\n", err) // DEBUG
