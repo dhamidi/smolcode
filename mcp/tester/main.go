@@ -24,6 +24,23 @@ type SubprocessReadWriteCloser struct {
 
 // NewSubprocessReadWriteCloser creates a new SubprocessReadWriteCloser.
 // It requires the caller to have already started the command.
+// TeeReadCloser wraps an io.Reader (the TeeReader) and an io.Closer (the original stdout pipe)
+// to satisfy the io.ReadCloser interface.
+type TeeReadCloser struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+// Read reads from the TeeReader.
+func (trc *TeeReadCloser) Read(p []byte) (n int, err error) {
+	return trc.reader.Read(p)
+}
+
+// Close closes the underlying stdout pipe.
+func (trc *TeeReadCloser) Close() error {
+	return trc.closer.Close()
+}
+
 func NewSubprocessReadWriteCloser(cmd *exec.Cmd, stdin io.WriteCloser, stdout io.ReadCloser) *SubprocessReadWriteCloser {
 	return &SubprocessReadWriteCloser{
 		WriteCloser: stdin,
@@ -86,10 +103,15 @@ func main() {
 		log.Fatalf("Failed to get stdin pipe: %v", err)
 	}
 
-	stdout, err := cmd.StdoutPipe()
+	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Fatalf("Failed to get stdout pipe: %v", err)
 	}
+
+	// Create a TeeReader to simultaneously write to os.Stdout and be read by the RPC client.
+	teeStdoutReader := io.TeeReader(stdoutPipe, os.Stdout)
+	// Wrap the TeeReader and the original stdoutPipe.Close method in our TeeReadCloser.
+	teedStdout := &TeeReadCloser{reader: teeStdoutReader, closer: stdoutPipe}
 
 	// Optional: Capture stderr for debugging the subprocess
 	cmd.Stderr = os.Stderr // Or a bytes.Buffer if you want to capture it
@@ -100,8 +122,8 @@ func main() {
 	}
 	log.Printf("Subprocess started (PID: %d)", cmd.Process.Pid)
 
-	// 4. Create the ReadWriteCloser
-	spRwc := NewSubprocessReadWriteCloser(cmd, stdin, stdout)
+	// 4. Create the ReadWriteCloser using the teed stdout
+	spRwc := NewSubprocessReadWriteCloser(cmd, stdin, teedStdout)
 
 	// 5. Create the JSON-RPC client
 	// The mcp.NewJSONRPC2ClientCodec comes from the mcp package we wrote earlier.
@@ -115,24 +137,42 @@ func main() {
 		log.Println("Client closed.")
 	}()
 
-	// 6. Prepare the request
+	// 6. Prepare and send the initialization request
+	log.Println("Sending RPC request to 'initialize'...")
+	initParams := map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{},
+		"clientInfo": map[string]interface{}{
+			"name":    "smolcode",
+			"version": "1.0.0",
+		},
+	}
+	var initReply interface{}
+	err = client.Call("initialize", initParams, &initReply)
+	if err != nil {
+		log.Fatalf("RPC call 'initialize' failed: %v", err)
+	}
+	log.Println("RPC call 'initialize' successful.")
+	fmt.Printf("Response from 'initialize': %+v\n", initReply)
+
+	// 7. Prepare the 'tools/list' request
 	// As per spec: id 1, method: "tools/list", and an empty params object.
 	// The net/rpc client handles ID generation. We just provide method and params.
-	params := make(map[string]interface{}) // Empty params object
-	var reply interface{}                  // To store the generic JSON response
+	listParams := make(map[string]interface{}) // Empty params object
+	var listReply interface{}                  // To store the generic JSON response
 
 	log.Println("Sending RPC request to 'tools/list'...")
-	// 7. Perform the RPC call
-	err = client.Call("tools/list", params, &reply)
+	// 8. Perform the 'tools/list' RPC call
+	err = client.Call("tools/list", listParams, &listReply)
 	if err != nil {
 		// If the error is rpc.ErrShutdown, it means the client was closed, possibly due to subprocess exit.
 		// The deferred Close() also calls cmd.Wait() which might log more details about subprocess exit.
 		log.Fatalf("RPC call 'tools/list' failed: %v", err)
 	}
 
-	// 8. Output the response
-	log.Println("RPC call successful.")
-	fmt.Printf("Response from server: %+v\n", reply)
+	// 9. Output the 'tools/list' response
+	log.Println("RPC call 'tools/list' successful.")
+	fmt.Printf("Response from 'tools/list': %+v\n", listReply)
 
 	log.Println("MCP tester finished successfully.")
 }

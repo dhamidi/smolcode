@@ -17,7 +17,7 @@ The MCP transport supported by this package is JSONRPC-2.0 over stdio.
 
 This file contains the subset of the JSONRPC-2.0 protocol that this package implements.
 
-The full specification can be found here: https://www.jsonrpc.org/specification
+The full specification can be found here: <https://www.jsonrpc.org/specification>
 
 ```go
 // see the output of `go doc -all -u -src net/rpc/jsonrpc.clientCodec` for inspiration
@@ -37,4 +37,22 @@ type JSONRPC2Response struct {
   Error   map[string]any   `json:"error,omitempty"` // optional error from
 }
 var _ (rpc.ClientCodec) = &JSONRPC2ClientCodec{}
+```
+
+# Initialization Message
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {},
+    "clientInfo": {
+      "name": "smolcode",
+      "version": "1.0.0"
+    }
+  }
+}
 ```

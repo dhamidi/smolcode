@@ -70,7 +70,10 @@ func (codec *JSONRPC2ClientCodec) WriteRequest(req *rpc.Request, params any) err
 		Params:  params,
 		ID:      id,
 	}
-	return codec.enc.Encode(jReq)
+	if err := codec.enc.Encode(jReq); err != nil {
+		return err
+	}
+	return codec.flush()
 }
 
 // jsonError represents a generic JSON-RPC error structure.
@@ -87,10 +90,13 @@ func (e *jsonError) Error() string {
 // ReadResponseHeader reads the JSON-RPC response header.
 // The header is the entire response object in JSON-RPC.
 func (codec *JSONRPC2ClientCodec) ReadResponseHeader(resp *rpc.Response) error {
+	fmt.Println("DEBUG: ReadResponseHeader - attempting to decode response") // DEBUG
 	var jResp JSONRPC2Response
 	if err := codec.dec.Decode(&jResp); err != nil {
+		fmt.Printf("DEBUG: ReadResponseHeader - decode error: %v\n", err) // DEBUG
 		return err
 	}
+	fmt.Printf("DEBUG: ReadResponseHeader - decoded response: %+v\n", jResp) // DEBUG
 
 	codec.reqMutex.Lock()
 	resp.Seq = jResp.ID
@@ -137,9 +143,11 @@ func (codec *JSONRPC2ClientCodec) ReadResponseHeader(resp *rpc.Response) error {
 // ReadResponseBody unmarshals the result from the response into the body.
 // It uses the lastResultForBody field set by the preceding ReadResponseHeader call.
 func (codec *JSONRPC2ClientCodec) ReadResponseBody(body any) error {
+	fmt.Printf("DEBUG: ReadResponseBody - entered. Body type: %T\n", body) // DEBUG
 	codec.bodyMutex.Lock()
 	resultToUse := codec.lastResultForBody
-	codec.lastResultForBody = nil // Consume it, ensuring it's used only once
+	fmt.Printf("DEBUG: ReadResponseBody - resultToUse: %s\n", string(*resultToUse)) // DEBUG
+	codec.lastResultForBody = nil                                                   // Consume it, ensuring it's used only once
 	codec.bodyMutex.Unlock()
 
 	if body == nil { // If rpc.Client Call/Go passes a nil reply value.
@@ -153,7 +161,23 @@ func (codec *JSONRPC2ClientCodec) ReadResponseBody(body any) error {
 		// Returning nil is safe as body remains unchanged.
 		return nil
 	}
-	return json.Unmarshal(*resultToUse, body)
+	err := json.Unmarshal(*resultToUse, body)
+	if err != nil {
+		fmt.Printf("DEBUG: ReadResponseBody - unmarshal error: %v\n", err) // DEBUG
+	}
+	return err // Return the original error
+}
+
+// flush checks if the underlying connection implements a Flush method and calls it.
+// This is useful for buffered writers.
+func (codec *JSONRPC2ClientCodec) flush() error {
+	type flusher interface {
+		Flush() error
+	}
+	if f, ok := codec.c.(flusher); ok {
+		return f.Flush()
+	}
+	return nil
 }
 
 // Close closes the underlying connection.
