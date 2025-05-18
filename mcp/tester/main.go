@@ -157,7 +157,7 @@ func main() {
 	// Reply is also nil for notifications (or a placeholder if Call insists, but our codec handles it).
 	// We use client.Call for notifications. Our codec handles the fact that no response body is expected.
 	var initializedNotificationReply interface{} // Placeholder, net/rpc Call requires a reply param.
-	err := client.Call("notifications/initialized", nil, &initializedNotificationReply)
+	err = client.Call("notifications/initialized", nil, &initializedNotificationReply)
 	if err != nil {
 		// For notifications, client.Call might return an error if the server closes the connection
 		// or if there's an issue with the codec's ReadResponseHeader/ReadResponseBody when no actual response is sent.
