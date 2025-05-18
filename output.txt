@@ -1,7 +1,78 @@
+2025/05/18 18:40:37 Starting MCP tester...
+2025/05/18 18:40:37 Subprocess started (PID: 72053)
+2025/05/18 18:40:37 Sending RPC request to 'initialize'...
 DEBUG: WriteRequest - sending: {"jsonrpc":"2.0","method":"initialize","params":{"capabilities":{},"clientInfo":{"name":"smolcode","version":"1.0.0"},"protocolVersion":"2024-11-05"},"id":1}
 DEBUG: ReadResponseHeader - attempting to decode response
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"experimental":{},"prompts":{"listChanged":false},"tools":{"listChanged":false}},"serverInfo":{"name":"mcp-fetch","version":"1.9.0"}}}
-DEBUG: ReadResponseHeader - decoded response: {JSONRPC:2.0 Result:0x140000a2018 Error:<nil> ID:1}
+DEBUG: ReadResponseHeader - decoded response: {JSONRPC:2.0 Result:0x14000194018 Error:<nil> ID:1}
 DEBUG: ReadResponseBody - entered. Body type: <nil>
 DEBUG: ReadResponseBody - resultToUse: {"protocolVersion":"2024-11-05","capabilities":{"experimental":{},"prompts":{"listChanged":false},"tools":{"listChanged":false}},"serverInfo":{"name":"mcp-fetch","version":"1.9.0"}}
 DEBUG: ReadResponseHeader - attempting to decode response
+signal: interrupt
+Traceback (most recent call last):
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/anyio/streams/memory.py", line 111, in receive
+    return self.receive_nowait()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/anyio/streams/memory.py", line 106, in receive_nowait
+    raise WouldBlock
+anyio.WouldBlock
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/mcp_server_fetch/server.py", line 288, in serve
+    await server.run(read_stream, write_stream, options, raise_exceptions=True)
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/mcp/server/lowlevel/server.py", line 495, in run
+    async with AsyncExitStack() as stack:
+               ~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py", line 768, in __aexit__
+    raise exc
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py", line 751, in __aexit__
+    cb_suppress = await cb(*exc_details)
+                  ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/mcp/shared/session.py", line 220, in __aexit__
+    return await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/anyio/_backends/_asyncio.py", line 776, in __aexit__
+    raise exc_val
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/mcp/server/lowlevel/server.py", line 506, in run
+    async with anyio.create_task_group() as tg:
+               ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/anyio/_backends/_asyncio.py", line 776, in __aexit__
+    raise exc_val
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/mcp/server/lowlevel/server.py", line 507, in run
+    async for message in session.incoming_messages:
+    ...<8 lines>...
+        )
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/anyio/abc/_streams.py", line 35, in __anext__
+    return await self.receive()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/anyio/streams/memory.py", line 119, in receive
+    await receive_event.wait()
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/anyio/_backends/_asyncio.py", line 1774, in wait
+    await self._event.wait()
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/locks.py", line 213, in wait
+    await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/bin/mcp-server-fetch", line 12, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/dhamidi/.cache/uv/archive-v0/1LOZx66JnlKC73d488r9-/lib/python3.13/site-packages/mcp_server_fetch/__init__.py", line 21, in main
+    asyncio.run(serve(args.user_agent, args.ignore_robots_txt, args.proxy_url))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/asyncio/runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt

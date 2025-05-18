@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"os/exec"
+	"time"
 
 	// IMPORTANT: Replace YOUR_MODULE_PATH with the actual Go module path
 	// for your mcp package, e.g., "github.com/youruser/yourproject/mcp"
@@ -137,36 +138,48 @@ func main() {
 		log.Println("Client closed.")
 	}()
 
-	// 6. Prepare and send the initialization request
-	log.Println("Sending RPC request to 'initialize'...")
+	// 6. Prepare and dispatch the 'initialize' request asynchronously
+	log.Println("Dispatching RPC request to 'initialize' asynchronously...")
 	initParams := map[string]interface{}{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]interface{}{},
 		"clientInfo": map[string]interface{}{
-			"name":    "smolcode",
-			"version": "1.0.0",
+			"name":    "smolcode-tester", // Updated client name slightly for clarity
+			"version": "1.0.1",
 		},
 	}
 	var initReply interface{}
-	err = client.Call("initialize", initParams, &initReply)
-	if err != nil {
-		log.Fatalf("RPC call 'initialize' failed: %v", err)
-	}
-	log.Println("RPC call 'initialize' successful.")
-	fmt.Printf("Response from 'initialize': %+v\n", initReply)
+	initializeRpcCall := client.Go("initialize", initParams, &initReply, nil)
 
-	// Send notifications/initialized notification
+	// 7. Send 'notifications/initialized' notification immediately after dispatching 'initialize'
 	log.Println("Sending RPC notification to 'notifications/initialized'...")
-	// For notifications, params can be nil if no params are expected,
-	// or an empty map. The JSON-RPC spec for this notification shows no params.
-	var initializedReply interface{}                                       // For Call, a reply arg is needed. Server should not send a JSON-RPC response body for a notification.
-	err = client.Call("notifications/initialized", nil, &initializedReply) // Using nil for params
+	// Params are nil as per spec for this notification.
+	// Reply is also nil for notifications (or a placeholder if Call insists, but our codec handles it).
+	// We use client.Call for notifications. Our codec handles the fact that no response body is expected.
+	var initializedNotificationReply interface{} // Placeholder, net/rpc Call requires a reply param.
+	err := client.Call("notifications/initialized", nil, &initializedNotificationReply)
 	if err != nil {
-		// net/rpc's Call expects a response. If the server sends no JSON content back for a notification (correct behavior),
-		// the decoder might return EOF or similar. This may not be a fatal error for the notification itself.
-		log.Printf("RPC notification 'notifications/initialized' completed; err (may be expected for notifications): %v", err)
+		// For notifications, client.Call might return an error if the server closes the connection
+		// or if there's an issue with the codec's ReadResponseHeader/ReadResponseBody when no actual response is sent.
+		// Our codec's ReadResponseHeader handles notifications by returning nil early if wasLastCallNotification is true.
+		// So, a nil error here implies the notification was written and the client proceeded without expecting a server reply body.
+		log.Printf("RPC notification 'notifications/initialized' call completed. Error (if any): %v", err)
 	} else {
-		log.Println("RPC notification 'notifications/initialized' sent successfully (and a response was unexpectedly received).")
+		log.Println("RPC notification 'notifications/initialized' call completed without error.")
+	}
+
+	// 8. Wait for the 'initialize' call to complete
+	log.Println("Waiting for 'initialize' response...")
+	select {
+	case call := <-initializeRpcCall.Done:
+		if call.Error != nil {
+			log.Fatalf("Asynchronous 'initialize' call failed: %v", call.Error)
+		} else {
+			log.Printf("'initialize' call successful. Reply: %+v\n", initReply)
+			// fmt.Printf("Response from 'initialize': %+v\n", initReply) // Already logged more verbosely
+		}
+	case <-time.After(10 * time.Second): // 10-second timeout
+		log.Fatalf("Timeout waiting for 'initialize' response")
 	}
 
 	// 7. Prepare the 'tools/list' request
