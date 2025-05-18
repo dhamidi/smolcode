@@ -10,7 +10,7 @@ import (
 
 	// IMPORTANT: Replace YOUR_MODULE_PATH with the actual Go module path
 	// for your mcp package, e.g., "github.com/youruser/yourproject/mcp"
-	"YOUR_MODULE_PATH/mcp"
+	"github.com/dhamidi/smolcode/mcp"
 )
 
 // SubprocessReadWriteCloser wraps the stdin and stdout of an exec.Cmd
@@ -105,7 +105,7 @@ func main() {
 
 	// 5. Create the JSON-RPC client
 	// The mcp.NewJSONRPC2ClientCodec comes from the mcp package we wrote earlier.
-	// Ensure YOUR_MODULE_PATH/mcp is correct in imports.
+	// Ensure github.com/dhamidi/smolcode/mcp is correct in imports.
 	client := rpc.NewClientWithCodec(mcp.NewJSONRPC2ClientCodec(spRwc))
 	defer func() {
 		log.Println("Closing RPC client and subprocess ReadWriteCloser...")
