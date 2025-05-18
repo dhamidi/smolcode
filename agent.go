@@ -458,7 +458,7 @@ func (agent *Agent) geminiMessage(fmtStr string, value ...any) {
 func (agent *Agent) skipMessage(fmtStr string, value ...any) {
 	// Use a distinct color for skipped messages, e.g., yellow or cyan.
 	// Let's use cyan (96m) for visibility.
-	fmt.Printf("\u001b[96mSkip   [%d]\u001b[0m: "+fmtStr+"\\n", append([]any{len(agent.history)}, value...)...)
+	fmt.Printf("\u001b[96mSkip   [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
 }
 
 func (agent *Agent) trace(direction string, arg any) {
@@ -721,7 +721,7 @@ func (agent *Agent) persistFullConversationToDB() error {
 	err := history.Save(agent.persistentConversation)
 	if err != nil {
 		// 4. Log any errors from history.Save to os.Stderr and return the error.
-		fmt.Fprintf(os.Stderr, "Warning: could not save conversation to DB: %v\\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: could not save conversation to DB: %v\n", err)
 		agent.trace("PersistToDB", map[string]string{"status": "error", "error": err.Error()})
 		return err
 	}
