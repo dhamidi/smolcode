@@ -2,6 +2,7 @@ package history
 
 import (
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+//go:embed schema.sql
+var schemaSQL string
 
 // DefaultDatabasePath is the default path where the history database is stored.
 var DefaultDatabasePath = ".smolcode/history.db"
@@ -50,6 +54,12 @@ func (c *Conversation) Append(payload interface{}) {
 	c.Messages = append(c.Messages, msg)
 }
 
+// initializeSchema creates the database schema if it doesn't exist.
+func initializeSchema(db *sql.DB) error {
+	_, err := db.Exec(schemaSQL)
+	return err
+}
+
 // initDB ensures the database and tables exist, returning a connection.
 func initDB(dataSourceName string) (*sql.DB, error) {
 	dbDir := filepath.Dir(dataSourceName)
@@ -65,22 +75,7 @@ func initDB(dataSourceName string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);`)
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		conversation_id TEXT NOT NULL,
-		sequence_number INTEGER NOT NULL,
-		payload BLOB NOT NULL,
-		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY (conversation_id) REFERENCES conversations(id),
-		UNIQUE (conversation_id, sequence_number)
-	);`)
-	if err != nil {
+	if err := initializeSchema(db); err != nil {
 		db.Close()
 		return nil, err
 	}
