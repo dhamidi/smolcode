@@ -69,3 +69,109 @@ After receiving the response, the client then needs to confirm reception of the 
   "method": "notifications/initialized"
 }
 ```
+
+# mcp.go - the MCP protocol
+
+This file encapsulates communication with MCP servers.
+
+Here is its public interface:
+
+```go
+fetchServer := mcp.NewServer("uvx", "mcp-server-fetch")
+err := fetchServer.Start() // starts the subprocess, and takes care of the initialization handshake
+tools, err := fetchServer.ListTools() // returns list of tool definitions
+fetchTool, found := tools.ByName("fetch")
+fetchTool.Name // "fetch"
+fetchTool.Description // "Long description of when to use the fetch tool"
+fetchTool.RawInputSchema // raw json bytes of the input schema
+content, err := fetchServer.Call("fetch", map[string]any{...}) // content is []mcp.ToolResultContent
+fetchServer.Close() // shut down the server
+
+type ToolResultContent struct {
+  Type string // "text" or "image"
+  Text string // non-empty when type == "text"
+  Data string // non-empty base64 encoded data when type == "image"
+  MimeType string // non-empty mime type for type == "image"
+}
+```
+
+## Tools
+
+### Listing tools - `tools/list`
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {
+    "cursor": "optional-cursor-value"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "get_weather",
+        "description": "Get current weather information for a location",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "City name or zip code"
+            }
+          },
+          "required": ["location"]
+        }
+      }
+    ],
+    "nextCursor": "next-page-cursor"
+  }
+}
+```
+
+### Calling tools - `tools/call`
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "get_weather",
+    "arguments": {
+      "location": "New York"
+    }
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Current weather in New York:\nTemperature: 72°F\nConditions: Partly cloudy"
+      }
+    ],
+    "isError": false
+  }
+}
+```

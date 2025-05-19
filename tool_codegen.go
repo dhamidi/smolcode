@@ -14,7 +14,7 @@ var CodegenTool = &ToolDefinition{
 		FunctionDeclarations: []*genai.FunctionDeclaration{
 			{
 				Name:        "generate_code",
-				Description: "Generates code based on an instruction and optional existing files, then writes the generated files to disk. Uses the Inceptionlabs API.\n\nWHEN TO USE THIS TOOL:\n- When you need to generate large amounts of code, potentially spanning multiple new files.\n- When you are following a pattern exemplified by existing files in the project.\n- When the task involves creating new components, features, or boilerplate based on an established structure.\n\nWHEN NOT TO USE THIS TOOL (consider `edit_file` instead):\n- For small, precise changes to existing code.\n- When you know the exact lines to add, remove, or modify.\n- For simple refactorings that don't involve generating new, extensive code structures.\n\nBefore using this tool, ensure you have identified a list of suitable existing files that exemplify the pattern to be followed. This can be done by recalling from memory or by inspecting the current codebase.",
+				Description: "Generates code based on an instruction, optional existing files, and an optional list of desired output files with descriptions. Writes the generated files to disk. Uses the Inceptionlabs API.\n\nWHEN TO USE THIS TOOL:\n- When you need to generate large amounts of code, potentially spanning multiple new files.\n- When you are following a pattern exemplified by existing files in the project.\n- When the task involves creating new components, features, or boilerplate based on an established structure.\n\nWHEN NOT TO USE THIS TOOL (consider `edit_file` instead):\n- For small, precise changes to existing code.\n- When you know the exact lines to add, remove, or modify.\n- For simple refactorings that don't involve generating new, extensive code structures.\n\nBefore using this tool, ensure you have identified a list of suitable existing files that exemplify the pattern to be followed. This can be done by recalling from memory or by inspecting the current codebase.",
 				Parameters: &genai.Schema{
 					Type: genai.TypeObject,
 					Properties: map[string]*genai.Schema{
@@ -32,6 +32,18 @@ var CodegenTool = &ToolDefinition{
 									"contents": {Type: genai.TypeString}, // Assuming agent sends string, will be decoded if base64
 								},
 								Required: []string{"path", "contents"},
+							},
+						},
+						"desired_files": {
+							Type:        genai.TypeArray,
+							Description: "Optional. An array of files to be generated. Each item should be an object with 'path' (string) and 'description' (string).",
+							Items: &genai.Schema{
+								Type: genai.TypeObject,
+								Properties: map[string]*genai.Schema{
+									"path":        {Type: genai.TypeString},
+									"description": {Type: genai.TypeString},
+								},
+								Required: []string{"path", "description"},
 							},
 						},
 					},
@@ -64,6 +76,22 @@ var CodegenTool = &ToolDefinition{
 			}
 		}
 
+		var desiredOutputFiles []codegen.DesiredFile
+		if argDesiredFiles, ok := args["desired_files"].([]interface{}); ok {
+			for i, fileArg := range argDesiredFiles {
+				if fileMap, ok := fileArg.(map[string]interface{}); ok {
+					path, pathOk := fileMap["path"].(string)
+					description, descriptionOk := fileMap["description"].(string)
+					if !pathOk || !descriptionOk {
+						return nil, fmt.Errorf("perform_code_generation: desired_files item %d is invalid: missing path or description, or wrong type", i)
+					}
+					desiredOutputFiles = append(desiredOutputFiles, codegen.DesiredFile{Path: path, Description: description})
+				} else {
+					return nil, fmt.Errorf("perform_code_generation: desired_files item %d is not a valid object", i)
+				}
+			}
+		}
+
 		apiKey := os.Getenv("INCEPTION_API_KEY")
 		if apiKey == "" {
 			// Log this, but the codegen package itself might also return an error if key is empty.
@@ -74,7 +102,7 @@ var CodegenTool = &ToolDefinition{
 		}
 
 		generator := codegen.New(apiKey)
-		generatedFiles, err := generator.GenerateCode(instruction, existingCodegenFiles, []codegen.DesiredFile{})
+		generatedFiles, err := generator.GenerateCode(instruction, existingCodegenFiles, desiredOutputFiles)
 		if err != nil {
 			return nil, fmt.Errorf("perform_code_generation: error from GenerateCode: %w", err)
 		}
