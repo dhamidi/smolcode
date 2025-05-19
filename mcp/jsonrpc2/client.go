@@ -95,17 +95,11 @@ func Connect(reader io.Reader, writer io.Writer) *Connection {
 	}
 	if wCloser, ok := writer.(io.Closer); ok {
 		isSame := false
-		// Check if reader and writer are the same closable entity to avoid double adding/closing
-		if len(closers) > 0 {
-			// A more robust check might be needed if they are different types but wrap the same resource.
-			// For common cases like net.Conn, this simple reference check for io.Closer interface should suffice.
-			if _, rok := reader.(io.ReadWriteCloser); rok {
-				if _, wok := writer.(io.ReadWriteCloser); wok {
-					if reader == writer { // Check if they are the exact same instance
-						isSame = true
-					}
-				}
-			} else if closers[0] == wCloser { // Fallback if not RWC, check if the closer interfaces are the same instance
+		// Check if reader and writer are the same closable entity to avoid double adding/closing.
+		// This is true if both reader and writer were successfully asserted to io.Closer,
+		// and those io.Closer interface values are identical (point to the same concrete instance and type).
+		if len(closers) > 0 && wCloser != nil { // Ensure rCloser (closers[0]) and wCloser both exist
+			if closers[0] == wCloser {
 				isSame = true
 			}
 		}
