@@ -39,26 +39,36 @@ func TestCallSuccess(t *testing.T) {
 		// Simulate successful response
 		respToSend := &Response{
 			JSONRPC: "2.0",
-			Result:  json.RawMessage(`{"result": "success"}`), // Escaped for tool
-			ID:      clientReq.ID,                             // Echo the ID from the request
+			Result:  json.RawMessage(`{"result": "success"}`),
+			ID:      clientReq.ID,
 		}
 		t.Logf("Server: Encoding response: %+v", respToSend)
-		errEncode := serverEncoder.Encode(respToSend)
-		if errEncode != nil {
+		if errEncode := serverEncoder.Encode(respToSend); errEncode != nil {
 			t.Logf("Server: Error encoding response: %v", errEncode)
+		} else {
+			t.Logf("Server: Response encoded and sent")
 		}
-		t.Logf("Server: Response encoded and sent (errEncode: %v)", errEncode)
+		// Send a notification to keep the readLoop engaged
+		notification := &Request{
+			JSONRPC: "2.0",
+			Method:  "server.event",
+			Params:  map[string]string{"data": "keepalive"},
+			// ID is omitted for notifications, making it a Notification
+		}
+		t.Logf("Server: Encoding notification: %+v", notification)
+		if errNotify := serverEncoder.Encode(notification); errNotify != nil {
+			t.Logf("Server: Error encoding notification: %v", errNotify)
+		} else {
+			t.Logf("Server: Notification encoded and sent")
+		}
+
 		t.Logf("Server: Goroutine blocking to keep connection alive for test")
 		select {} // Block forever
 	}()
 
 	var result map[string]string
 	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
-	if err == nil {
-		assert.NotNil(t, result, "If err is nil, result map should not be nil")
-		assert.Equal(t, "success", result["result"], "Result field did not match")
-	} else {
-		assert.EqualError(t, err, "jsonrpc2: connection closed by remote", "Expected 'connection closed by remote' error")
-		assert.Nil(t, result, "If connection closed error, result should be nil")
-	}
+	assert.NoError(t, err, "c.Call should succeed without error")
+	assert.NotNil(t, result, "Result map should not be nil after successful call")
+	assert.Equal(t, "success", result["result"], "Result field did not match")
 }
