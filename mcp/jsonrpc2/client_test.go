@@ -53,8 +53,11 @@ func TestCallSuccess(t *testing.T) {
 
 	var result map[string]string
 	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
-	assert.Equal(t, "success", result["result"])
-	if err != nil && err.Error() != "jsonrpc2: connection closed by remote" {
-		assert.Fail(t, "Call returned an unexpected error", "Expected nil or 'connection closed by remote', got %v", err)
+	if err == nil {
+		assert.NotNil(t, result, "If err is nil, result map should not be nil")
+		assert.Equal(t, "success", result["result"], "Result field did not match")
+	} else {
+		assert.EqualError(t, err, "jsonrpc2: connection closed by remote", "Expected 'connection closed by remote' error")
+		assert.Nil(t, result, "If connection closed error, result should be nil")
 	}
 }
