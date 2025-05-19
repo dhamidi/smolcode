@@ -1,155 +1,434 @@
 package jsonrpc2
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"net"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestClientConcurrentCalls(t *testing.T) {
-	input := &bytes.Buffer{}
-	output := &bytes.Buffer{}
+func TestCallSuccess(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
 
-	client := NewClient(io.MultiReader(input, output))
-
-	// Simulate server responses
 	go func() {
-		time.Sleep(100 * time.Millisecond)
-		resp1 := Response{
+		req := &Request{
 			JSONRPC: "2.0",
-			Result:  json.RawMessage(`"result1"`),
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
 			ID:      "1",
 		}
-		json.NewEncoder(output).Encode(resp1)
-
-		time.Sleep(100 * time.Millisecond)
-		resp2 := Response{
+		resp := &Response{
 			JSONRPC: "2.0",
-			Result:  json.RawMessage(`"result2"`),
-			ID:      "2",
+			Result:  json.RawMessage(`{"result": "success"}`),
+			ID:      "1",
 		}
-		json.NewEncoder(output).Encode(resp2)
+		json.NewEncoder(writer).Encode(req)
+		json.NewEncoder(writer).Encode(resp)
 	}()
 
-	ctx := context.Background()
-	var result1, result2 string
-
-	// Make concurrent calls
-	go func() {
-		err := client.Call(ctx, "method1", nil, &result1)
-		assert.NoError(t, err)
-		assert.Equal(t, "result1", result1)
-	}()
-
-	go func() {
-		err := client.Call(ctx, "method2", nil, &result2)
-		assert.NoError(t, err)
-		assert.Equal(t, "result2", result2)
-	}()
-
-	// Wait for both calls to complete
-	time.Sleep(300 * time.Millisecond)
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.NoError(t, err)
+	assert.Equal(t, "success", result["result"])
 }
 
-func TestClientReadError(t *testing.T) {
-	input := &bytes.Buffer{}
-	output := &bytes.Buffer{}
+func TestCallJSONRPCError(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
 
-	client := NewClient(io.MultiReader(input, output))
-
-	// Simulate server error response
 	go func() {
-		time.Sleep(100 * time.Millisecond)
-		resp := Response{
+		req := &Request{
 			JSONRPC: "2.0",
-			Error: &ErrorObject{
-				Code:    -32601,
-				Message: "Method not found",
-			},
-			ID: "1",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+			ID:      "1",
 		}
-		json.NewEncoder(output).Encode(resp)
+		resp := &Response{
+			JSONRPC: "2.0",
+			Error:   &Error{Code: -32601, Message: "Method not found"},
+			ID:      "1",
+		}
+		json.NewEncoder(writer).Encode(req)
+		json.NewEncoder(writer).Encode(resp)
 	}()
 
-	ctx := context.Background()
-	var result string
-
-	// Make a call that should return an error
-	err := client.Call(ctx, "nonexistentmethod", nil, &result)
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Method not found")
 }
 
-func TestClientConcurrentErrors(t *testing.T) {
-	input := &bytes.Buffer{}
-	output := &bytes.Buffer{}
+func TestCallContextCancelled(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
 
-	client := NewClient(io.MultiReader(input, output))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
-	// Simulate server error responses
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		resp1 := Response{
-			JSONRPC: "2.0",
-			Error: &ErrorObject{
-				Code:    -32601,
-				Message: "Method not found",
-			},
-			ID: "1",
-		}
-		json.NewEncoder(output).Encode(resp1)
-
-		time.Sleep(100 * time.Millisecond)
-		resp2 := Response{
-			JSONRPC: "2.0",
-			Error: &ErrorObject{
-				Code:    -32601,
-				Message: "Method not found",
-			},
-			ID: "2",
-		}
-		json.NewEncoder(output).Encode(resp2)
-	}()
-
-	ctx := context.Background()
-	var result1, result2 string
-
-	// Make concurrent calls that should return errors
-	go func() {
-		err := client.Call(ctx, "nonexistentmethod1", nil, &result1)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Method not found")
-	}()
-
-	go func() {
-		err := client.Call(ctx, "nonexistentmethod2", nil, &result2)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Method not found")
-	}()
-
-	// Wait for both calls to complete
-	time.Sleep(300 * time.Millisecond)
+	var result map[string]string
+	err := c.Call(ctx, "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
 }
 
-func TestClientClose(t *testing.T) {
-	input := &bytes.Buffer{}
-	output := &bytes.Buffer{}
+func TestCallConnectionClosed(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
 
-	client := NewClient(io.MultiReader(input, output))
+	writer.Close()
 
-	// Close the client
-	err := client.Close()
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "connection closed by remote")
+}
+
+func TestNotifySuccess(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	go func() {
+		req := &Request{
+			JSONRPC: "2.0",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+		}
+		json.NewEncoder(writer).Encode(req)
+	}()
+
+	err := c.Notify(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"})
+	assert.NoError(t, err)
+}
+
+func TestNotifyConnectionClosed(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	writer.Close()
+
+	err := c.Notify(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "connection closed by remote")
+}
+
+func TestSubscribe(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	subChan := c.Subscribe()
+
+	go func() {
+		notification := &Notification{
+			Method: "testMethod",
+			Params: json.RawMessage(`{"param1": "value1"}`),
+		}
+		json.NewEncoder(writer).Encode(notification)
+	}()
+
+	select {
+	case notification := <-subChan:
+		assert.Equal(t, "testMethod", notification.Method)
+		assert.Equal(t, `{"param1": "value1"}`, string(notification.Params))
+	case <-time.After(1 * time.Second):
+		t.Errorf("did not receive notification in time")
+	}
+}
+
+func TestClose(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	err := c.Close()
+	assert.NoError(t, err)
+	assert.Error(t, c.Err())
+}
+
+func TestCloseMultipleCalls(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	err := c.Close()
+	assert.NoError(t, err)
+	err = c.Close()
+	assert.NoError(t, err)
+}
+
+func TestCallAfterClose(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	err := c.Close()
 	assert.NoError(t, err)
 
-	// Ensure further calls fail
-	ctx := context.Background()
-	var result string
-	err = client.Call(ctx, "method", nil, &result)
+	var result map[string]string
+	err = c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "connection closed")
+	assert.Contains(t, err.Error(), "client is closing")
+}
+
+func TestNotifyAfterClose(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	err := c.Close()
+	assert.NoError(t, err)
+
+	err = c.Notify(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "client is closing")
+}
+
+func TestIDTypes(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	go func() {
+		req := &Request{
+			JSONRPC: "2.0",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+			ID:      "1",
+		}
+		resp := &Response{
+			JSONRPC: "2.0",
+			Result:  json.RawMessage(`{"result": "success"}`),
+			ID:      "1",
+		}
+		json.NewEncoder(writer).Encode(req)
+		json.NewEncoder(writer).Encode(resp)
+	}()
+
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.NoError(t, err)
+	assert.Equal(t, "success", result["result"])
+
+	go func() {
+		req := &Request{
+			JSONRPC: "2.0",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+			ID:      1,
+		}
+		resp := &Response{
+			JSONRPC: "2.0",
+			Result:  json.RawMessage(`{"result": "success"}`),
+			ID:      1,
+		}
+		json.NewEncoder(writer).Encode(req)
+		json.NewEncoder(writer).Encode(resp)
+	}()
+
+	err = c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.NoError(t, err)
+	assert.Equal(t, "success", result["result"])
+}
+
+func TestSeparateReadWriteCloser(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	go func() {
+		req := &Request{
+			JSONRPC: "2.0",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+			ID:      "1",
+		}
+		resp := &Response{
+			JSONRPC: "2.0",
+			Result:  json.RawMessage(`{"result": "success"}`),
+			ID:      "1",
+		}
+		json.NewEncoder(writer).Encode(req)
+		json.NewEncoder(writer).Encode(resp)
+	}()
+
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.NoError(t, err)
+	assert.Equal(t, "success", result["result"])
+}
+
+func TestSameReadWriteCloser(t *testing.T) {
+	conn := &net.Conn{}
+	c := Connect(conn, conn)
+
+	go func() {
+		req := &Request{
+			JSONRPC: "2.0",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+			ID:      "1",
+		}
+		resp := &Response{
+			JSONRPC: "2.0",
+			Result:  json.RawMessage(`{"result": "success"}`),
+			ID:      "1",
+		}
+		json.NewEncoder(conn).Encode(req)
+		json.NewEncoder(conn).Encode(resp)
+	}()
+
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.NoError(t, err)
+	assert.Equal(t, "success", result["result"])
+}
+
+func TestErrAfterConnectionError(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	writer.Close()
+
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "connection closed by remote")
+
+	assert.Error(t, c.Err())
+}
+
+func TestConcurrentCalls(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	go func() {
+		for i := 0; i < 10; i++ {
+			req := &Request{
+				JSONRPC: "2.0",
+				Method:  "testMethod",
+				Params:  map[string]interface{}{"param1": "value1"},
+				ID:      strconv.Itoa(i),
+			}
+			resp := &Response{
+				JSONRPC: "2.0",
+				Result:  json.RawMessage(`{"result": "success"}`),
+				ID:      strconv.Itoa(i),
+			}
+			json.NewEncoder(writer).Encode(req)
+			json.NewEncoder(writer).Encode(resp)
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			var result map[string]string
+			err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+			assert.NoError(t, err)
+			assert.Equal(t, "success", result["result"])
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func TestConcurrentCallsAndNotifies(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	go func() {
+		for i := 0; i < 10; i++ {
+			req := &Request{
+				JSONRPC: "2.0",
+				Method:  "testMethod",
+				Params:  map[string]interface{}{"param1": "value1"},
+				ID:      strconv.Itoa(i),
+			}
+			resp := &Response{
+				JSONRPC: "2.0",
+				Result:  json.RawMessage(`{"result": "success"}`),
+				ID:      strconv.Itoa(i),
+			}
+			json.NewEncoder(writer).Encode(req)
+			json.NewEncoder(writer).Encode(resp)
+		}
+		for i := 0; i < 10; i++ {
+			notification := &Notification{
+				Method: "testMethod",
+				Params: json.RawMessage(`{"param1": "value1"}`),
+			}
+			json.NewEncoder(writer).Encode(notification)
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			var result map[string]string
+			err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+			assert.NoError(t, err)
+			assert.Equal(t, "success", result["result"])
+		}(i)
+	}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			err := c.Notify(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"})
+			assert.NoError(t, err)
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func TestNullResultUnmarshalling(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	go func() {
+		req := &Request{
+			JSONRPC: "2.0",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+			ID:      "1",
+		}
+		resp := &Response{
+			JSONRPC: "2.0",
+			Result:  json.RawMessage(`null`),
+			ID:      "1",
+		}
+		json.NewEncoder(writer).Encode(req)
+		json.NewEncoder(writer).Encode(resp)
+	}()
+
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestMalformedJSONMessages(t *testing.T) {
+	reader, writer := io.Pipe()
+	c := Connect(reader, writer)
+
+	go func() {
+		req := &Request{
+			JSONRPC: "2.0",
+			Method:  "testMethod",
+			Params:  map[string]interface{}{"param1": "value1"},
+			ID:      "1",
+		}
+		json.NewEncoder(writer).Encode(req)
+		writer.Write([]byte("malformed"))
+	}()
+
+	var result map[string]string
+	err := c.Call(context.Background(), "testMethod", map[string]interface{}{"param1": "value1"}, &result)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "malformed message envelope")
 }
