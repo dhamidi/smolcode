@@ -287,11 +287,9 @@ func (c *Connection) readLoop() {
 			}
 			c.errMu.Unlock()
 
-			select {
-			case <-c.closing: // Already closing or closed
-			default:
-				close(c.closing) // Signal connection error to other parts
-			}
+			// No longer close(c.closing) here.
+			// Close() is responsible for initiating the close.
+			// readLoop just reports the error and exits.
 			return // Exit readLoop
 		}
 
@@ -303,11 +301,6 @@ func (c *Connection) readLoop() {
 				c.connErr = err
 			}
 			c.errMu.Unlock()
-			select {
-			case <-c.closing:
-			default:
-				close(c.closing)
-			}
 			return
 		}
 
@@ -320,11 +313,6 @@ func (c *Connection) readLoop() {
 					c.connErr = err
 				}
 				c.errMu.Unlock()
-				select {
-				case <-c.closing:
-				default:
-					close(c.closing)
-				}
 				return
 			}
 
@@ -372,11 +360,6 @@ func (c *Connection) readLoop() {
 					c.connErr = err
 				}
 				c.errMu.Unlock()
-				select {
-				case <-c.closing:
-				default:
-					close(c.closing)
-				}
 				return
 			}
 
