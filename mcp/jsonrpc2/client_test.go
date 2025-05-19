@@ -48,7 +48,8 @@ func TestCallSuccess(t *testing.T) {
 			t.Logf("Server: Error encoding response: %v", errEncode)
 		}
 		t.Logf("Server: Response encoded and sent (errEncode: %v)", errEncode)
-		t.Logf("Server: Goroutine finishing")
+		t.Logf("Server: Goroutine blocking to keep connection alive for test")
+		select {} // Block forever
 	}()
 
 	var result map[string]string
