@@ -333,7 +333,7 @@ func main() {
 	toolCallParams := map[string]interface{}{
 		"name": "fetch",
 		"arguments": map[string]interface{}{
-			"url": "https_example_com_this_should_be_fetched",
+			"url": "https://example.com",
 		},
 	}
 	var toolCallReply interface{}
