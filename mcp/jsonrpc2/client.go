@@ -15,6 +15,13 @@ type Request struct {
 	ID      interface{} `json:"id,omitempty"`
 }
 
+// RequestArgs encapsulates the arguments for FormatRequest.
+type RequestArgs struct {
+	Method string
+	Params interface{}
+	ID     interface{}
+}
+
 // Response represents a JSON-RPC 2.0 response object.
 type Response struct {
 	JSONRPC string           `json:"jsonrpc"`
@@ -39,13 +46,12 @@ type ErrorObject struct {
 }
 
 // FormatRequest creates a JSON-RPC request object and marshals it to JSON.
-// The id can be a string, number, or null. If id is nil, it will be omitted (for notifications).
-func FormatRequest(method string, params interface{}, id interface{}) ([]byte, error) {
+func FormatRequest(args RequestArgs) ([]byte, error) {
 	req := Request{
 		JSONRPC: "2.0",
-		Method:  method,
-		Params:  params,
-		ID:      id,
+		Method:  args.Method,
+		Params:  args.Params,
+		ID:      args.ID,
 	}
 	return json.Marshal(req)
 }
@@ -58,6 +64,20 @@ type Client struct {
 	mu        sync.Mutex // Protects nextID
 }
 
+// ClientCallArgs encapsulates the arguments for the Client.Call method,
+// excluding the context and result destination.
+type ClientCallArgs struct {
+	Method string
+	Params interface{}
+}
+
+// ClientNotifyArgs encapsulates the arguments for the Client.Notify method,
+// excluding the context.
+type ClientNotifyArgs struct {
+	Method string
+	Params interface{}
+}
+
 // NewClient creates a new JSON-RPC client with the given transport.
 func NewClient(transport Transport) *Client {
 	return &Client{
@@ -67,15 +87,15 @@ func NewClient(transport Transport) *Client {
 }
 
 // Call sends a JSON-RPC request to the server and waits for a response.
-// The method is the RPC method name, params is the parameters object (can be nil),
-// and result is a pointer where the successful response's result field will be unmarshalled.
-func (c *Client) Call(ctx context.Context, method string, params interface{}, result interface{}) error {
+// args contains the method and parameters for the call.
+// resultDest is a pointer where the successful response's result field will be unmarshalled.
+func (c *Client) Call(ctx context.Context, args ClientCallArgs, resultDest interface{}) error {
 	c.mu.Lock()
 	currentID := c.nextID
 	c.nextID++
 	c.mu.Unlock()
 
-	reqBytes, err := FormatRequest(method, params, currentID)
+	reqBytes, err := FormatRequest(RequestArgs{Method: args.Method, Params: args.Params, ID: currentID})
 	if err != nil {
 		return fmt.Errorf("jsonrpc: failed to format request: %w", err)
 	}
@@ -121,12 +141,12 @@ func (c *Client) Call(ctx context.Context, method string, params interface{}, re
 		return fmt.Errorf("jsonrpc: server error (%d): %s", respError.Code, respError.Message)
 	}
 
-	if respResult == nil && result != nil {
+	if respResult == nil && resultDest != nil {
 		return nil
 	}
 
-	if result != nil && respResult != nil {
-		err = json.Unmarshal(*respResult, result)
+	if resultDest != nil && respResult != nil {
+		err = json.Unmarshal(*respResult, resultDest)
 		if err != nil {
 			return fmt.Errorf("jsonrpc: failed to unmarshal result: %w", err)
 		}
@@ -136,13 +156,19 @@ func (c *Client) Call(ctx context.Context, method string, params interface{}, re
 }
 
 // Notify sends a JSON-RPC notification (a request without an ID).
+// args contains the method and parameters for the notification.
 // It does not wait for a response from the server.
-func (c *Client) Notify(ctx context.Context, method string, params interface{}) error {
-	reqBytes, err := FormatRequest(method, params, nil)
+func (c *Client) Notify(ctx context.Context, args ClientNotifyArgs) error {
+	// ID is nil for notifications, FormatRequest handles omitempty for ID
+	reqBytes, err := FormatRequest(RequestArgs{Method: args.Method, Params: args.Params, ID: nil})
 	if err != nil {
 		return fmt.Errorf("jsonrpc: failed to format notification: %w", err)
 	}
 
+	// For Notify, we send the request but don't expect a response payload in the typical RPC sense.
+	// The transport might return an error if sending fails (e.g., connection closed).
+	// It might also return a payload if the transport is, for example, HTTP and it gives an HTTP status response.
+	// However, per JSON-RPC, no response is sent for notifications. So we ignore responsePayload.
 	_, err = c.transport.SendRequest(ctx, reqBytes)
 	if err != nil {
 		return fmt.Errorf("jsonrpc: transport error during notify: %w", err)
@@ -161,5 +187,15 @@ func ParseResponse(jsonResponse []byte) (id interface{}, result *json.RawMessage
 	if resp.JSONRPC != "" && resp.JSONRPC != "2.0" {
 		return resp.ID, nil, &ErrorObject{Code: -32600, Message: "Invalid JSON-RPC version"}, nil
 	}
+
+	// Validate mutual exclusivity of result and error
+	if resp.Error != nil && resp.Result != nil {
+		return resp.ID, nil, nil, fmt.Errorf("jsonrpc: response contains both result and error fields")
+	}
+	if resp.Error == nil && resp.Result == nil {
+		// A valid success response must have a "result" field (even if null), and an error response must have an "error" field.
+		return resp.ID, nil, nil, fmt.Errorf("jsonrpc: response contains neither result nor error field")
+	}
+
 	return resp.ID, resp.Result, resp.Error, nil
 }
