@@ -12,7 +12,10 @@ The `smolcode` CLI can be invoked in several ways:
 
 1.  **Default Mode (Interactive Coding Agent)**:
     Run `./smolcode` without any subcommands to start the interactive coding agent.
-    *   `-c, --conversation <path>`: Optional. Path to a JSON file to initialize the conversation from a previous session.
+\
+    *   `--conversation-id <id>` or `--cid <id>`: Optional. ID of a specific conversation to load.
+    *   `--continue [id|latest]` or `-c [id|latest]`: Optional. Continue a conversation. Can be an ID, 'latest', or no value (which defaults to loading the latest conversation). If neither `--conversation-id` nor `--continue` is provided, a new conversation is started.
+
     *   `-m, --model <model-name>`: Optional. The name of the model to use (e.g., `gemini-1.5-pro-latest`).
     *   `--mcp <id:command>`: Optional. Register an MCP (Anthropic's Model Context Protocol) server. This flag can be used multiple times to register multiple servers. The `<id>` is a unique identifier for the server, and `<command>` is the command to execute to run this MCP server. For example: `./smolcode --mcp my-server:./run_my_server.sh`
 
@@ -43,6 +46,14 @@ The `smolcode` CLI can be invoked in several ways:
     *   `./smolcode history list`: Lists all saved conversations with their details.
     *   `./smolcode history show --id <conversation-id>`: Shows the detailed messages of a specific conversation.
 
+5.  **Code Generation**:
+    Generate code using the `generate` subcommand.
+    *   `./smolcode generate [flags] <instruction>`
+    *   `--archive`: Optional. Output a tar archive to stdout instead of writing files to disk.
+    *   `--existing-file <path>` or `-f <path>`: Optional. Path to an existing file to provide as context (can be specified multiple times).
+    *   `--desired <filepath:description>`: Optional. Desired file to generate, format 'filepath:description' (can be specified multiple times). Example: `--desired "pkg/utils/helpers.go:A utility package for common helper functions"`.
+    *   `<instruction>`: Required. The instruction or prompt for what code to generate.
+
 # Configuration
 
 This section details the necessary environment variables and files used by `smolcode`.
@@ -64,7 +75,6 @@ The `.smolcode` directory in the root of the project stores operational data for
 | Filename/Directory      | Purpose                                                                                                                               |
 | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
 | `history.db`            | Database file for storing conversation history or interaction logs.                                                                   |
-| `last-working-version`  | Stores a reference or copy of the last known good state, potentially for rollback or recovery.                                        |
 | `memory.db`             | Primary database for the agent's memory, including facts and learned lessons (likely an indexed or structured form of `facts/`).      |
 | `plans.db`              | Database storing development plans, including their steps and statuses.                                                                 |
 | `system.md`             | Contains the system prompt, core instructions, or initial configuration for the `smolcode` agent.                                     |
