@@ -14,6 +14,7 @@ The `smolcode` CLI can be invoked in several ways:
     Run `./smolcode` without any subcommands to start the interactive coding agent.
     *   `-c, --conversation <path>`: Optional. Path to a JSON file to initialize the conversation from a previous session.
     *   `-m, --model <model-name>`: Optional. The name of the model to use (e.g., `gemini-1.5-pro-latest`).
+    *   `--mcp <id:command>`: Optional. Register an MCP (Multi-Component Proxy) server. This flag can be used multiple times to register multiple servers. The `<id>` is a unique identifier for the server, and `<command>` is the command to execute to run this MCP server. For example: `./smolcode --mcp my-server:./run_my_server.sh`
 
 2.  **Plan Management**:
     Manage development plans using the `plan` subcommand.
