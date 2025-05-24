@@ -16,13 +16,14 @@ import (
 	"time"
 
 	"github.com/dhamidi/smolcode/history"
+	"github.com/dhamidi/smolcode/mcp"
 	"google.golang.org/genai"
 )
 
 //go:embed .smolcode/system.md
 var defaultSystemPrompt string
 
-func Code(conversationID string, modelName string, newConversationFlag bool) error {
+func Code(conversationID string, modelName string, newConversationFlag bool, mcpServerConfigs []MCPServerConfig) error {
 	var loadedConv *history.Conversation
 	var err error
 	initialHistoryForAgent := []*genai.Content{}
@@ -158,7 +159,7 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 		return err // Propagate error
 	}
 
-	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistoryForAgent, loadedConv, "main", loadedConv.ID, len(initialHistoryForAgent), conversationWasNewlyCreated)
+	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistoryForAgent, loadedConv, "main", loadedConv.ID, len(initialHistoryForAgent), conversationWasNewlyCreated, mcpServerConfigs)
 	if modelName != "" {
 		agent.ChooseModel(modelName)
 	}
@@ -169,7 +170,7 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 	return nil // Successful completion of Code function
 }
 
-func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content, convData *history.Conversation, name string, initialConvID string, initialLoadedMessages int, initialConvIsNew bool) *Agent {
+func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content, convData *history.Conversation, name string, initialConvID string, initialLoadedMessages int, initialConvIsNew bool, mcpConfigs []MCPServerConfig) *Agent {
 	if name == "" {
 		name = "main"
 	}
@@ -186,6 +187,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		initialConvID:         initialConvID,                  // Store passed-in value
 		initialLoadedMessages: initialLoadedMessages,          // Store passed-in value
 		initialConvIsNew:      initialConvIsNew,               // Store passed-in value
+		mcpConfigs:            mcpConfigs,                     // Store MCP server configurations
 		// cachedContent and systemPromptModTime are zero initially
 	}
 
@@ -206,7 +208,19 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 	return agent
 }
 
+type MCPServerConfig struct {
+	ID      string
+	Command string
+}
+
 type Agent struct {
+	mcpConfigs          []MCPServerConfig
+	mcpActiveServers    []*mcp.Server // Holds active MCP server clients
+	mcpTools            []mcp.Tool    // Holds all tools fetched from MCP servers
+	mcpToolExecutionMap map[string]struct {
+		Server       *mcp.Server
+		OriginalName string
+	} // For executing MCP tools
 	initialConvID          string // Added to store initial conversation ID
 	initialLoadedMessages  int    // Added to store count of loaded messages
 	initialConvIsNew       bool   // Added to store if the conversation was new
@@ -226,16 +240,19 @@ type Agent struct {
 
 func (agent *Agent) ChooseModel(modelName string) *Agent {
 	agent.modelName = modelName
+
 	return agent
 }
 
 func (agent *Agent) EnableTracing() *Agent {
 	agent.tracingEnabled = true
+
 	return agent
 }
 
 func (agent *Agent) DisableTracing() *Agent {
 	agent.tracingEnabled = false
+
 	return agent
 }
 
@@ -303,6 +320,19 @@ func (agent *Agent) refreshCache(ctx context.Context) {
 }
 
 func (agent *Agent) Run(ctx context.Context) error {
+	// Defer closing of all active MCP servers
+	defer func() {
+		fmt.Println("Shutting down MCP servers...")
+		for _, mcpServer := range agent.mcpActiveServers {
+			fmt.Printf("Closing MCP server: %s\n", mcpServer.ID())
+			if err := mcpServer.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error closing MCP server %s: %v\n", mcpServer.ID(), err)
+			} else {
+				fmt.Printf("MCP server %s closed successfully.\n", mcpServer.ID())
+			}
+		}
+	}()
+
 	if agent.history == nil {
 		agent.history = []*genai.Content{}
 	}
@@ -431,20 +461,64 @@ func (agent *Agent) Run(ctx context.Context) error {
 }
 
 func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
-	agent.toolMessage("%s", FormatFunctionCall(call))
+	agent.toolMessage("Attempting to execute tool: %s", call.Name)
+	// Check if it's an MCP tool first
+	if execDetails, isMCPTool := agent.mcpToolExecutionMap[call.Name]; isMCPTool {
+		agent.toolMessage("Executing MCP tool %s (original: %s) via server %s", call.Name, execDetails.OriginalName, execDetails.Server.ID())
+
+		// Ensure call.Args is not nil, as mcp.Server.Call expects map[string]any
+		argsToSend := call.Args
+		if argsToSend == nil {
+			argsToSend = make(map[string]any)
+		}
+
+		resultContents, err := execDetails.Server.Call(context.Background(), execDetails.OriginalName, argsToSend)
+		var responseData map[string]any
+		if err != nil {
+			agent.toolMessage("MCP tool %s execution error: %v", call.Name, err)
+			// Try to include any partial content if the error indicates a tool-side error but still returned content
+			if len(resultContents) > 0 && resultContents[0].Type == "text" {
+				responseData = map[string]any{"error": err.Error(), "details": resultContents[0].Text}
+			} else {
+				responseData = map[string]any{"error": err.Error()}
+			}
+		} else {
+			// Process resultContents into a single map[string]any.
+			// This is a simplified conversion. A more robust one would handle multiple content parts, images, etc.
+			if len(resultContents) > 0 {
+				if resultContents[0].Type == "text" {
+					responseData = map[string]any{"output": resultContents[0].Text}
+					agent.toolMessage("MCP tool %s result: %s", call.Name, CropText(resultContents[0].Text, 70))
+				} else if resultContents[0].Type == "image" {
+					responseData = map[string]any{"output": fmt.Sprintf("[Image data received, mime: %s]", resultContents[0].MimeType)}
+					agent.toolMessage("MCP tool %s result: Image data (mime: %s)", call.Name, resultContents[0].MimeType)
+				} else {
+					responseData = map[string]any{"output": fmt.Sprintf("[Unknown MCP content type: %s]", resultContents[0].Type)}
+					agent.toolMessage("MCP tool %s result: Unknown content type %s", call.Name, resultContents[0].Type)
+				}
+			} else {
+				responseData = map[string]any{"output": "MCP tool executed successfully, no content returned."}
+				agent.toolMessage("MCP tool %s: No content returned", call.Name)
+			}
+		}
+		return genai.NewContentFromFunctionResponse(call.Name, responseData, "tool")
+	}
+
+	// If not an MCP tool, proceed with existing local tool execution logic
+	agent.toolMessage("Executing local tool: %s", call.Name)
 	tool, found := agent.tools.Get(call.Name)
 	if !found {
-		agent.toolMessage("%s", "not found")
-		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": "tool not found"}, genai.RoleUser)
+		agent.toolMessage("Local tool %s not found", call.Name)
+		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": "tool not found"}, "tool")
 	}
 	result, err := tool.Function(call.Args)
 	if err != nil {
-		agent.toolMessage("%s", err)
-		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": err.Error()}, genai.RoleUser)
+		agent.toolMessage("Local tool %s execution error: %v", call.Name, err)
+		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": err.Error()}, "tool")
 	}
 
-	agent.toolMessage("%s", CropText(AsJSON(result), 70))
-	return genai.NewContentFromFunctionResponse(call.Name, result, genai.RoleUser)
+	agent.toolMessage("Local tool %s result: %s", call.Name, CropText(AsJSON(result), 70))
+	return genai.NewContentFromFunctionResponse(call.Name, result, "tool")
 }
 
 func (agent *Agent) errorMessage(fmtStr string, value ...any) {

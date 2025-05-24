@@ -135,6 +135,11 @@ func NewServer(id string, cmd string) *Server {
 	}
 }
 
+// ID returns the server's unique identifier.
+func (s *Server) ID() string {
+	return s.id
+}
+
 // Start starts the server subprocess and performs the initialization handshake.
 func (s *Server) Start(ctx context.Context) error {
 	s.proc = exec.CommandContext(ctx, s.cmdPath, s.cmdArgs...)

@@ -6,9 +6,32 @@ import (
 	"log"
 	"os"
 
+	"strings" // Added for parsing MCP flag
+
 	"github.com/dhamidi/smolcode"
 	"github.com/dhamidi/smolcode/history"
 )
+
+// mcpServerConfigFlag is a custom flag type for parsing MCP server configurations.
+type mcpServerConfigFlag []smolcode.MCPServerConfig
+
+func (m *mcpServerConfigFlag) String() string {
+	// Convert the slice of MCPServerConfig to a string representation for help messages
+	var configs []string
+	for _, config := range *m {
+		configs = append(configs, fmt.Sprintf("%s:%s", config.ID, config.Command))
+	}
+	return strings.Join(configs, ", ")
+}
+
+func (m *mcpServerConfigFlag) Set(value string) error {
+	parts := strings.SplitN(value, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid format for --mcp flag, expected id:command, got: %s", value)
+	}
+	*m = append(*m, smolcode.MCPServerConfig{ID: parts[0], Command: parts[1]})
+	return nil
+}
 
 const continueFlagNotSet = "__smolcode_continue_flag_not_set__"
 
@@ -28,6 +51,9 @@ func handleDefaultCommand(args []string) {
 	// Old BoolVar for continue removed
 	defaultCmd.StringVar(&modelName, "model", "", "The name of the model to use")
 	defaultCmd.StringVar(&modelName, "m", "", "The name of the model to use (shorthand)")
+
+	var mcpConfigs mcpServerConfigFlag
+	defaultCmd.Var(&mcpConfigs, "mcp", "Register an MCP server. Format: id:command. Can be used multiple times.")
 
 	// Important: Parse only the arguments passed to this handler
 	defaultCmd.Parse(args)
@@ -102,7 +128,7 @@ func handleDefaultCommand(args []string) {
 
 	}
 
-	if err := smolcode.Code(conversationIDForAgent, modelName, forceNewForAgent); err != nil {
+	if err := smolcode.Code(conversationIDForAgent, modelName, forceNewForAgent, mcpConfigs); err != nil {
 		die("Error running smol-agent: %v", err) // die needs to be accessible
 	}
 }
