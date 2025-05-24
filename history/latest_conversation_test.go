@@ -1,7 +1,6 @@
 package history
 
 import (
-	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,7 +41,7 @@ func TestGetLatestConversationID(t *testing.T) {
 			name:                  "empty database",
 			conversationsToCreate: []Conversation{},
 			expectedID:            "",
-			expectedErr:           sql.ErrNoRows,
+			expectedErr:           ErrConversationNotFound,
 		},
 		{
 			name: "single conversation",
@@ -108,7 +107,7 @@ func TestGetLatestConversationID_DBNotExists(t *testing.T) {
 	}
 
 	id, err := GetLatestConversationID(nonExistentDBPath)
-	if err != sql.ErrNoRows {
+	if err != ErrConversationNotFound {
 		t.Errorf("Expected sql.ErrNoRows when DB is new and empty, got %v", err)
 	}
 	if id != "" {

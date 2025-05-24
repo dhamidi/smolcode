@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql" // For sql.ErrNoRows
 	"flag"
 	"fmt"
 	"log"
@@ -47,7 +46,7 @@ func handleDefaultCommand(args []string) {
 		if continueConvOpt == "" || continueConvOpt == "latest" { // --continue or --continue=latest
 			latestID, err := history.GetLatestConversationID(history.DefaultDatabasePath)
 			if err != nil {
-				if err == sql.ErrNoRows {
+				if err == history.ErrConversationNotFound {
 					log.Println("No conversations found in history. Starting a new conversation.")
 					conversationIDForAgent = ""
 					forceNewForAgent = true // No latest, so force new

@@ -10,8 +10,8 @@ import (
 // GetLatestConversationID retrieves the ID of the most recent conversation
 // from the database at the given dbPath.
 // It returns the conversation ID and nil on success.
-// If no conversations are found, it returns an empty string and sql.ErrNoRows.
-// Other errors from database interaction are returned as well.
+// If no conversations are found, it returns an empty string and ErrConversationNotFound.
+// Other errors from database interaction are returned as well, potentially wrapped.
 func GetLatestConversationID(dbPath string) (string, error) {
 	db, err := initDB(dbPath) // initDB is defined in history.go
 	if err != nil {
@@ -24,8 +24,7 @@ func GetLatestConversationID(dbPath string) (string, error) {
 	err = db.QueryRow(query).Scan(&id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// It's idiomatic to return sql.ErrNoRows if no record is found
-			return "", err
+			return "", ErrConversationNotFound // Return custom error
 		}
 		return "", fmt.Errorf("failed to query for latest conversation ID: %w", err)
 	}
