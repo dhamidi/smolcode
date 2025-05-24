@@ -456,26 +456,26 @@ func (agent *Agent) youMessage(fmtStr string, value ...any) {
 	// However, the user prompt like "You [0]:" is handled separately in the Run loop.
 	// This specific youMessage function doesn't seem to be called in the current codebase provided.
 	// If it were to be used for general "You" messages, it would be:
-	// agent.displayer.DisplayMessage("You", "94m", len(agent.history)-1, fmtStr, value...)
+	// agent.displayer.DisplayMessage("You", "94", len(agent.history)-1, fmtStr, value...)
 	// For now, let's make it use the displayer but acknowledge its current non-use or specific context.
 	// It's safer to keep the history logic as it was, if it was specific.
 	// The primary prompt for user input is in the `Run` loop directly using fmt.Printf.
 	// Given this, DisplayMessage might not be the perfect fit if `len(agent.history)-1` is crucial and specific.
 	// However, to adhere to the refactoring goal, we'll use the displayer.
 	// The original fmt.Printf for the prompt in `Run` will be addressed separately.
-	agent.displayer.DisplayMessage("You", "94m", len(agent.history)-1, fmtStr, value...)
+	agent.displayer.DisplayMessage("You", "94", len(agent.history)-1, fmtStr, value...)
 }
 
 func (agent *Agent) toolMessage(fmtStr string, value ...any) {
-	agent.displayer.DisplayMessage("Tool", "95m", len(agent.history), fmtStr, value...)
+	agent.displayer.DisplayMessage("Tool", "95", len(agent.history), fmtStr, value...)
 }
 
 func (agent *Agent) geminiMessage(fmtStr string, value ...any) {
-	agent.displayer.DisplayMessage("Gemini", "93m", len(agent.history), fmtStr, value...)
+	agent.displayer.DisplayMessage("Gemini", "93", len(agent.history), fmtStr, value...)
 }
 
 func (agent *Agent) skipMessage(fmtStr string, value ...any) {
-	agent.displayer.DisplayMessage("Skip  ", "96m", len(agent.history), fmtStr, value...)
+	agent.displayer.DisplayMessage("Skip  ", "96", len(agent.history), fmtStr, value...)
 }
 
 func (agent *Agent) trace(direction string, arg any) {
