@@ -107,7 +107,7 @@ func (g *GlamourousTextDisplay) DisplayMessage(role string, colorCode string, hi
 	} else {
 		rolePrefix = fmt.Sprintf("\u001b[%sm%s\u001b[0m: ", colorCode, role)
 	}
-	fmt.Printf(rolePrefix) // Print prefix without newline
+	fmt.Print(rolePrefix) // Print prefix without newline
 
 	// Print the glamour-rendered message (which usually includes its own newline handling)
 	fmt.Print(prettyOutput)
