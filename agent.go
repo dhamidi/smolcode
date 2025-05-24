@@ -307,15 +307,6 @@ func (agent *Agent) Run(ctx context.Context) error {
 		agent.history = []*genai.Content{}
 	}
 
-	// Display initial conversation status
-	if agent.initialConvIsNew {
-		agent.displayer.Display(fmt.Sprintf("Started new conversation with ID: %s", agent.initialConvID))
-	} else {
-		agent.displayer.Display(fmt.Sprintf("Successfully loaded conversation ID: %s", agent.initialConvID))
-	}
-	agent.displayer.Display(fmt.Sprintf("Loaded %d messages into agent history.", agent.initialLoadedMessages))
-	// End display initial conversation status
-
 	agent.displayer.Display(fmt.Sprintf("Chat with %s (use 'Ctrl-c' to quit)", agent.modelName))
 	agent.displayer.Display(fmt.Sprintf("Available tools: %s", strings.Join(agent.tools.Names(), ", ")))
 	readUserInput := true
@@ -368,7 +359,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 
 		// Print usage metadata summary
-		agent.displayer.DisplayMessage("Usage", "90m", -1, "%s", formatUsageMetadata(response.UsageMetadata))
+		agent.displayer.DisplayMessage("Usage", "90", -1, "%s", formatUsageMetadata(response.UsageMetadata))
 
 		if len(response.Candidates) == 0 {
 			agent.errorMessage("empty response received")
