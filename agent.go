@@ -26,6 +26,7 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 	var loadedConv *history.Conversation
 	var err error
 	initialHistoryForAgent := []*genai.Content{}
+	var conversationWasNewlyCreated bool // Added to track if conversation is new
 
 	if conversationID != "" {
 		// Attempt to load the specified conversation
@@ -39,9 +40,9 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 				fmt.Fprintf(os.Stderr, "Fatal: Could not create new conversation: %v\n", err)
 				return err // Return the error
 			}
-			fmt.Printf("Started new conversation with ID: %s\n", loadedConv.ID)
+			conversationWasNewlyCreated = true
 		} else {
-			fmt.Printf("Successfully loaded conversation ID: %s\n", loadedConv.ID)
+			conversationWasNewlyCreated = false
 		}
 	} else if newConversationFlag {
 		// Explicitly start a new conversation
@@ -50,7 +51,7 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 			fmt.Fprintf(os.Stderr, "Fatal: Could not create new conversation: %v\n", err)
 			return err // Return the error
 		}
-		fmt.Printf("Started new conversation with ID: %s\n", loadedConv.ID)
+		conversationWasNewlyCreated = true
 	} else {
 		// Attempt to load the latest conversation
 		fmt.Println("No conversation ID specified, attempting to load the latest conversation...")
@@ -60,12 +61,14 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 		}
 		if len(convList) > 0 {
 			latestID := convList[0].ID // Assumes list is sorted by latest
-			fmt.Printf("Found latest conversation with ID: %s. Attempting to load.\n", latestID)
+			// fmt.Printf("Found latest conversation with ID: %s. Attempting to load.\n", latestID) // Removed
 			loadedConv, err = history.Load(latestID)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error loading latest conversation %s: %v. Starting a new conversation instead.\n", latestID, err)
+				// conversationWasNewlyCreated will be handled if a new one is created below
 			} else {
-				fmt.Printf("Successfully loaded latest conversation ID: %s\n", loadedConv.ID)
+				conversationWasNewlyCreated = false
+				// fmt.Printf("Successfully loaded latest conversation ID: %s\n", loadedConv.ID) // Removed
 			}
 		} else {
 			fmt.Println("No existing conversations found.")
@@ -78,7 +81,7 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 				fmt.Fprintf(os.Stderr, "Fatal: Could not create new conversation: %v\n", err)
 				return err // Return the error
 			}
-			fmt.Printf("Started new conversation with ID: %s\n", loadedConv.ID)
+			conversationWasNewlyCreated = true
 		}
 	}
 
@@ -113,7 +116,7 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 			}
 
 		}
-		fmt.Printf("Loaded %d messages into agent history.\n", len(initialHistoryForAgent))
+		// fmt.Printf("Loaded %d messages into agent history.\n", len(initialHistoryForAgent)) // Removed
 	}
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
@@ -155,7 +158,7 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 		return err // Propagate error
 	}
 
-	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistoryForAgent, loadedConv, "main")
+	agent := NewAgent(client, getUserMessage, tools, systemPrompt, initialHistoryForAgent, loadedConv, "main", loadedConv.ID, len(initialHistoryForAgent), conversationWasNewlyCreated)
 	if modelName != "" {
 		agent.ChooseModel(modelName)
 	}
@@ -166,20 +169,23 @@ func Code(conversationID string, modelName string, newConversationFlag bool) err
 	return nil // Successful completion of Code function
 }
 
-func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content, convData *history.Conversation, name string) *Agent {
+func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools ToolBox, systemInstruction string, initialHistory []*genai.Content, convData *history.Conversation, name string, initialConvID string, initialLoadedMessages int, initialConvIsNew bool) *Agent {
 	if name == "" {
 		name = "main"
 	}
 	agent := &Agent{
-		client:            client,
-		getUserMessage:    getUserMessage,
-		tools:             tools,
-		tracingEnabled:    false,
-		systemInstruction: systemInstruction,
-		history:           initialHistory,
-		name:              name,
-		modelName:         "gemini-2.5-pro-preview-03-25", // Default model
-		displayer:         &GlamourousTextDisplay{},       // Use GlamourousTextDisplay by default
+		client:                client,
+		getUserMessage:        getUserMessage,
+		tools:                 tools,
+		tracingEnabled:        false,
+		systemInstruction:     systemInstruction,
+		history:               initialHistory,
+		name:                  name,
+		modelName:             "gemini-2.5-pro-preview-03-25", // Default model
+		displayer:             &GlamourousTextDisplay{},       // Use GlamourousTextDisplay by default
+		initialConvID:         initialConvID,                  // Store passed-in value
+		initialLoadedMessages: initialLoadedMessages,          // Store passed-in value
+		initialConvIsNew:      initialConvIsNew,               // Store passed-in value
 		// cachedContent and systemPromptModTime are zero initially
 	}
 
@@ -201,6 +207,9 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 }
 
 type Agent struct {
+	initialConvID          string // Added to store initial conversation ID
+	initialLoadedMessages  int    // Added to store count of loaded messages
+	initialConvIsNew       bool   // Added to store if the conversation was new
 	name                   string
 	client                 *genai.Client
 	getUserMessage         func() (string, bool)
@@ -297,6 +306,16 @@ func (agent *Agent) Run(ctx context.Context) error {
 	if agent.history == nil {
 		agent.history = []*genai.Content{}
 	}
+
+	// Display initial conversation status
+	if agent.initialConvIsNew {
+		agent.displayer.Display(fmt.Sprintf("Started new conversation with ID: %s", agent.initialConvID))
+	} else {
+		agent.displayer.Display(fmt.Sprintf("Successfully loaded conversation ID: %s", agent.initialConvID))
+	}
+	agent.displayer.Display(fmt.Sprintf("Loaded %d messages into agent history.", agent.initialLoadedMessages))
+	// End display initial conversation status
+
 	agent.displayer.Display(fmt.Sprintf("Chat with %s (use 'Ctrl-c' to quit)", agent.modelName))
 	agent.displayer.Display(fmt.Sprintf("Available tools: %s", strings.Join(agent.tools.Names(), ", ")))
 	readUserInput := true
