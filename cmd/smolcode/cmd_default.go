@@ -1,25 +1,32 @@
 package main
 
 import (
+	"database/sql" // For sql.ErrNoRows
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/dhamidi/smolcode"
+	"github.com/dhamidi/smolcode/history"
 )
+
+const continueFlagNotSet = "__smolcode_continue_flag_not_set__"
 
 // handleDefaultCommand executes the default smolcode behavior.
 // It parses flags relevant to the default operation and calls smolcode.Code.
 func handleDefaultCommand(args []string) {
 	var specificIDToLoad string
-	var continueLatest bool
+	// var continueLatest bool // Removed
+	var continueConvOpt string // Added to accept optional value or "latest"
 	var modelName string
 
 	defaultCmd := flag.NewFlagSet("smolcode_default", flag.ExitOnError) // Use a unique name to avoid conflict
-	defaultCmd.StringVar(&specificIDToLoad, "conversation-id", "", "ID of a specific conversation to load or continue")
-	defaultCmd.StringVar(&specificIDToLoad, "cid", "", "ID of a specific conversation to load or continue (shorthand)")
-	defaultCmd.BoolVar(&continueLatest, "continue", false, "Continue the latest conversation")
-	defaultCmd.BoolVar(&continueLatest, "c", false, "Continue the latest conversation (shorthand)")
+	defaultCmd.StringVar(&specificIDToLoad, "conversation-id", "", "ID of a specific conversation to load")
+	defaultCmd.StringVar(&specificIDToLoad, "cid", "", "ID of a specific conversation to load (shorthand)")
+	defaultCmd.StringVar(&continueConvOpt, "continue", continueFlagNotSet, "Continue a conversation. Provide an ID, 'latest', or pass flag without value to use the latest conversation.")
+	defaultCmd.StringVar(&continueConvOpt, "c", continueFlagNotSet, "Continue a conversation. Provide an ID, 'latest', or pass flag without value to use the latest conversation. (shorthand)")
+	// Old BoolVar for continue removed
 	defaultCmd.StringVar(&modelName, "model", "", "The name of the model to use")
 	defaultCmd.StringVar(&modelName, "m", "", "The name of the model to use (shorthand)")
 
@@ -29,16 +36,40 @@ func handleDefaultCommand(args []string) {
 	var conversationIDForAgent string
 	var forceNewForAgent bool
 
+	// Determine how to handle conversation loading based on flags
 	if specificIDToLoad != "" {
 		conversationIDForAgent = specificIDToLoad
 		forceNewForAgent = false
-		if continueLatest {
-			fmt.Fprintln(os.Stderr, "Warning: Both --continue (-c) and --conversation-id (-cid) were provided. Using the specific ID.")
+		if continueConvOpt != continueFlagNotSet {
+			fmt.Fprintln(os.Stderr, "Warning: Both --conversation-id (-cid) and --continue (-c) were provided. Prioritizing --conversation-id.")
 		}
-	} else if continueLatest {
-		conversationIDForAgent = ""
-		forceNewForAgent = false
+	} else if continueConvOpt != continueFlagNotSet { // --continue or -c was used
+		if continueConvOpt == "" || continueConvOpt == "latest" { // --continue or --continue=latest
+			latestID, err := history.GetLatestConversationID(history.DefaultDatabasePath)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					log.Println("No conversations found in history. Starting a new conversation.")
+					conversationIDForAgent = ""
+					forceNewForAgent = true // No latest, so force new
+				} else {
+					// For other errors, log it and fall back to a new conversation for robustness.
+					log.Printf("Error fetching latest conversation ID: %v. Starting a new conversation.", err)
+					conversationIDForAgent = ""
+					forceNewForAgent = true
+				}
+			} else {
+				log.Printf("Continuing latest conversation: %s", latestID)
+				conversationIDForAgent = latestID
+				forceNewForAgent = false
+			}
+		} else {
+			// Request to load specific ID via --continue <id>
+			log.Printf("Attempting to continue conversation with ID: %s", continueConvOpt)
+			conversationIDForAgent = continueConvOpt
+			forceNewForAgent = false
+		}
 	} else {
+		// Default: Start a new conversation
 		conversationIDForAgent = ""
 		forceNewForAgent = true
 	}
