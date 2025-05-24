@@ -205,7 +205,87 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 
 	// Caching logic has been moved to runInference (see runInference func)
 
+	// Initialize and start MCP servers
+	agent.mcpActiveServers = []*mcp.Server{}
+	agent.mcpTools = []mcp.Tool{} // Holds a raw list of tools from all servers
+	agent.mcpToolExecutionMap = make(map[string]struct {
+		Server       *mcp.Server
+		OriginalName string
+	})
+
+	fmt.Printf("Initializing MCP servers based on %d configurations...\\n", len(agent.mcpConfigs))
+	for _, serverConfig := range agent.mcpConfigs {
+		fmt.Printf("Attempting to create MCP server instance for ID %s (command: %s)\\n", serverConfig.ID, serverConfig.Command)
+		server := mcp.NewServer(serverConfig.ID, serverConfig.Command)
+		if server == nil {
+			fmt.Fprintf(os.Stderr, "Error creating MCP server instance for ID %s (command: %s): NewServer returned nil\\n", serverConfig.ID, serverConfig.Command)
+			continue
+		}
+
+		fmt.Printf("Attempting to start MCP server %s...\\n", serverConfig.ID)
+		// Using context.Background() for now, consider if a more specific context is needed
+		if err := server.Start(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting MCP server %s (command: %s): %v\\n", serverConfig.ID, serverConfig.Command, err)
+			continue
+		}
+		fmt.Printf("MCP Server %s started successfully.\\n", serverConfig.ID)
+		agent.mcpActiveServers = append(agent.mcpActiveServers, server)
+
+		// Fetch tools from this active MCP server
+		fmt.Printf("Fetching tools from MCP server %s...\\n", server.ID())
+		toolsFromServer, err := server.ListTools(context.Background()) // Using context.Background() for now
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing tools from MCP server %s: %v\\n", server.ID(), err)
+			// We might still want to keep the server active even if listing tools fails initially.
+			// Depending on desired robustness, could 'continue' here or allow agent to proceed.
+			continue
+		}
+		fmt.Printf("Fetched %d tools from MCP server %s\\n", len(toolsFromServer), server.ID())
+		agent.mcpTools = append(agent.mcpTools, toolsFromServer...)
+
+		// Populate agent's toolbox with these tools
+		for _, mcpT := range toolsFromServer { // mcpT is of type mcp.Tool
+			agentToolName := fmt.Sprintf("%s_%s", server.ID(), mcpT.Name)
+
+			var paramSchema *genai.Schema
+			if len(mcpT.RawInputSchema) > 0 && string(mcpT.RawInputSchema) != "null" {
+				schemaErr := json.Unmarshal(mcpT.RawInputSchema, &paramSchema)
+				if schemaErr != nil {
+					fmt.Fprintf(os.Stderr, "Error unmarshalling schema for MCP tool %s from server %s: %v\\n", mcpT.Name, server.ID(), schemaErr)
+					continue // Skip this tool if schema is invalid
+				}
+			} else {
+				// Create an empty schema if RawInputSchema is empty or "null"
+				paramSchema = &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}}
+			}
+
+			declaration := &genai.FunctionDeclaration{
+				Name:        agentToolName,
+				Description: mcpT.Description,
+				Parameters:  paramSchema,
+			}
+
+			// Add the tool to the agent's main toolbox, making it visible to the Gemini model.
+			mcpGenaiTool := &genai.Tool{
+				FunctionDeclarations: []*genai.FunctionDeclaration{declaration},
+			}
+			agent.tools.Add(&ToolDefinition{Tool: mcpGenaiTool, Function: nil}) // MCP tools are executed via RPC, not a local Go func
+			fmt.Printf("Added MCP tool declaration to agent toolbox: %s\\n", agentToolName)
+
+			// Store mapping for execution
+			agent.mcpToolExecutionMap[agentToolName] = struct {
+				Server       *mcp.Server
+				OriginalName string
+			}{
+				Server:       server,
+				OriginalName: mcpT.Name,
+			}
+		}
+	}
+	fmt.Printf("MCP server initialization complete. Active MCP servers: %d. Total MCP tools mapped: %d\\n", len(agent.mcpActiveServers), len(agent.mcpToolExecutionMap))
+
 	return agent
+
 }
 
 type MCPServerConfig struct {
