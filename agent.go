@@ -179,6 +179,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		history:           initialHistory,
 		name:              name,
 		modelName:         "gemini-2.5-pro-preview-03-25", // Default model
+		displayer:         &RawTextDisplay{},              // Instantiate the displayer
 		// cachedContent and systemPromptModTime are zero initially
 	}
 
@@ -211,6 +212,7 @@ type Agent struct {
 	cachedContent          string                // Stores the resource name of the cached content
 	cachedHistoryCount     int                   // Number of history entries in cachedContent
 	persistentConversation *history.Conversation // For storing history in SQLite
+	displayer              TextDisplayer         // For displaying text to the user
 }
 
 func (agent *Agent) ChooseModel(modelName string) *Agent {
@@ -295,14 +297,14 @@ func (agent *Agent) Run(ctx context.Context) error {
 	if agent.history == nil {
 		agent.history = []*genai.Content{}
 	}
-	fmt.Printf("Chat with %s (use 'Ctrl-c' to quit)\n", agent.modelName)
-	fmt.Printf("Available tools: %s\n", strings.Join(agent.tools.Names(), ", "))
+	agent.displayer.Display(fmt.Sprintf("Chat with %s (use 'Ctrl-c' to quit)", agent.modelName))
+	agent.displayer.Display(fmt.Sprintf("Available tools: %s", strings.Join(agent.tools.Names(), ", ")))
 	readUserInput := true
 	for {
 		if readUserInput {
 			agent.refreshCache(ctx) // Refresh cache before getting user input
 
-			fmt.Printf("\u001b[94mYou [%d]\u001b[0m: ", len(agent.history)) // Print prompt with history length
+			agent.displayer.DisplayPrompt("\u001b[94mYou [%d]\u001b[0m: ", len(agent.history)) // Print prompt with history length
 			userInput, ok := agent.getUserMessage()
 			if !ok {
 				break
@@ -347,7 +349,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 
 		// Print usage metadata summary
-		fmt.Printf("\u001b[90m%s\u001b[0m\n", formatUsageMetadata(response.UsageMetadata))
+		agent.displayer.Display(fmt.Sprintf("\u001b[90m%s\u001b[0m", formatUsageMetadata(response.UsageMetadata)))
 
 		if len(response.Candidates) == 0 {
 			agent.errorMessage("empty response received")
@@ -408,11 +410,11 @@ func (agent *Agent) Run(ctx context.Context) error {
 	}
 
 	// Final save of conversation to database on exit
-	fmt.Println("\nExiting... ensuring conversation is saved to database.")
+	agent.displayer.Display("\nExiting... ensuring conversation is saved to database.")
 	if err := agent.persistFullConversationToDB(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: final attempt to persist conversation to DB failed: %v\n", err)
 	} else {
-		fmt.Println("Conversation saved to database successfully.")
+		agent.displayer.Display("Conversation saved to database successfully.")
 	}
 
 	return nil
@@ -436,29 +438,34 @@ func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
 }
 
 func (agent *Agent) errorMessage(fmtStr string, value ...any) {
-	fmt.Printf("\u001b[91mError [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
+	agent.displayer.DisplayError(fmtStr, value...)
 }
 
 func (agent *Agent) youMessage(fmtStr string, value ...any) {
-	// This function is now the primary way to show user input, but the original direct fmt.Print in Run should handle the initial prompt.
-	// We format it consistently here. Note: the user input itself is added to history *before* calling inference,
-	// so the len(agent.history) here might be off by one depending on exact call order. Let's assume it reflects the state *before* this message.
-	// Re-checking Run loop logic: history is appended *after* reading input. So len(agent.history) should be correct *when* this is called.
-	fmt.Printf("\u001b[94mYou [%d]\u001b[0m: %s\n", len(agent.history)-1, fmt.Sprintf(fmtStr, value...)) // Use len-1 assuming history includes current msg
+	// The history length for "You" messages is usually len(agent.history)-1 when it's about the *current* user input.
+	// However, the user prompt like "You [0]:" is handled separately in the Run loop.
+	// This specific youMessage function doesn't seem to be called in the current codebase provided.
+	// If it were to be used for general "You" messages, it would be:
+	// agent.displayer.DisplayMessage("You", "94m", len(agent.history)-1, fmtStr, value...)
+	// For now, let's make it use the displayer but acknowledge its current non-use or specific context.
+	// It's safer to keep the history logic as it was, if it was specific.
+	// The primary prompt for user input is in the `Run` loop directly using fmt.Printf.
+	// Given this, DisplayMessage might not be the perfect fit if `len(agent.history)-1` is crucial and specific.
+	// However, to adhere to the refactoring goal, we'll use the displayer.
+	// The original fmt.Printf for the prompt in `Run` will be addressed separately.
+	agent.displayer.DisplayMessage("You", "94m", len(agent.history)-1, fmtStr, value...)
 }
 
 func (agent *Agent) toolMessage(fmtStr string, value ...any) {
-	fmt.Printf("\u001b[95mTool [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
+	agent.displayer.DisplayMessage("Tool", "95m", len(agent.history), fmtStr, value...)
 }
 
 func (agent *Agent) geminiMessage(fmtStr string, value ...any) {
-	fmt.Printf("\u001b[93mGemini [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
+	agent.displayer.DisplayMessage("Gemini", "93m", len(agent.history), fmtStr, value...)
 }
 
 func (agent *Agent) skipMessage(fmtStr string, value ...any) {
-	// Use a distinct color for skipped messages, e.g., yellow or cyan.
-	// Let's use cyan (96m) for visibility.
-	fmt.Printf("\u001b[96mSkip   [%d]\u001b[0m: "+fmtStr+"\n", append([]any{len(agent.history)}, value...)...)
+	agent.displayer.DisplayMessage("Skip  ", "96m", len(agent.history), fmtStr, value...)
 }
 
 func (agent *Agent) trace(direction string, arg any) {
