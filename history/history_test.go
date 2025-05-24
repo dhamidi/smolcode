@@ -233,6 +233,105 @@ func TestAppend(t *testing.T) {
 	}
 }
 
+func TestLoad_PayloadDeserialization(t *testing.T) {
+	_, tempDbPath, cleanup := newTestDB(t)
+	defer cleanup()
+
+	originalConv, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	type CustomPayload struct {
+		Detail string `json:"detail"`
+		Amount int    `json:"amount"`
+	}
+
+	payload1 := CustomPayload{Detail: "item x", Amount: 123}
+	payload2 := map[string]interface{}{"type": "event", "id": "evt_abc", "valid": true}
+	payload3 := "this is a raw string payload"
+	payload4 := 456.789
+	payload5 := false
+
+	originalConv.Append(payload1)
+	originalConv.Append(payload2)
+	originalConv.Append(payload3)
+	originalConv.Append(payload4)
+	originalConv.Append(payload5)
+
+	err = SaveTo(originalConv, tempDbPath)
+	if err != nil {
+		t.Fatalf("SaveTo() failed: %v", err)
+	}
+
+	loadedConv, err := LoadFrom(originalConv.ID, tempDbPath) // Use LoadFrom to specify db path
+	if err != nil {
+		t.Fatalf("LoadFrom() failed: %v", err)
+	}
+	if loadedConv == nil {
+		t.Fatal("LoadFrom() returned a nil conversation")
+	}
+
+	if len(loadedConv.Messages) != len(originalConv.Messages) {
+		t.Fatalf("Loaded conversation message count mismatch: got %d, want %d", len(loadedConv.Messages), len(originalConv.Messages))
+	}
+
+	// Verify payload1 (CustomPayload, deserializes to map[string]interface{})
+	if loadedMsg1Payload, ok := loadedConv.Messages[0].Payload.(map[string]interface{}); ok {
+		if detail, ok := loadedMsg1Payload["detail"].(string); !ok || detail != payload1.Detail {
+			t.Errorf("Message 0 payload detail mismatch: got %v, want %s", loadedMsg1Payload["detail"], payload1.Detail)
+		}
+		// JSON numbers are float64 by default when unmarshalled into interface{}
+		if amount, ok := loadedMsg1Payload["amount"].(float64); !ok || int(amount) != payload1.Amount {
+			t.Errorf("Message 0 payload amount mismatch: got %v, want %d", loadedMsg1Payload["amount"], payload1.Amount)
+		}
+	} else {
+		t.Errorf("Message 0 payload type assertion to map[string]interface{} failed. Got: %T", loadedConv.Messages[0].Payload)
+	}
+
+	// Verify payload2 (map[string]interface{})
+	if loadedMsg2Payload, ok := loadedConv.Messages[1].Payload.(map[string]interface{}); ok {
+		if typ, ok := loadedMsg2Payload["type"].(string); !ok || typ != payload2["type"] {
+			t.Errorf("Message 1 payload type mismatch: got %v, want %s", loadedMsg2Payload["type"], payload2["type"])
+		}
+		if id, ok := loadedMsg2Payload["id"].(string); !ok || id != payload2["id"] {
+			t.Errorf("Message 1 payload id mismatch: got %v, want %s", loadedMsg2Payload["id"], payload2["id"])
+		}
+		if valid, ok := loadedMsg2Payload["valid"].(bool); !ok || valid != payload2["valid"] {
+			t.Errorf("Message 1 payload valid mismatch: got %v, want %t", loadedMsg2Payload["valid"], payload2["valid"])
+		}
+	} else {
+		t.Errorf("Message 1 payload type assertion to map[string]interface{} failed. Got: %T", loadedConv.Messages[1].Payload)
+	}
+
+	// Verify payload3 (string)
+	if loadedMsg3Payload, ok := loadedConv.Messages[2].Payload.(string); ok {
+		if loadedMsg3Payload != payload3 {
+			t.Errorf("Message 2 payload mismatch: got %s, want %s", loadedMsg3Payload, payload3)
+		}
+	} else {
+		t.Errorf("Message 2 payload type assertion to string failed. Got: %T", loadedConv.Messages[2].Payload)
+	}
+
+	// Verify payload4 (float64)
+	if loadedMsg4Payload, ok := loadedConv.Messages[3].Payload.(float64); ok {
+		if loadedMsg4Payload != payload4 {
+			t.Errorf("Message 3 payload mismatch: got %f, want %f", loadedMsg4Payload, payload4)
+		}
+	} else {
+		t.Errorf("Message 3 payload type assertion to float64 failed. Got: %T", loadedConv.Messages[3].Payload)
+	}
+
+	// Verify payload5 (bool)
+	if loadedMsg5Payload, ok := loadedConv.Messages[4].Payload.(bool); ok {
+		if loadedMsg5Payload != payload5 {
+			t.Errorf("Message 4 payload mismatch: got %t, want %t", loadedMsg5Payload, payload5)
+		}
+	} else {
+		t.Errorf("Message 4 payload type assertion to bool failed. Got: %T", loadedConv.Messages[4].Payload)
+	}
+}
+
 func TestSave(t *testing.T) {
 	originalDbPath := DefaultDatabasePath
 	tempDbFile, err := os.CreateTemp(t.TempDir(), "test_save_*.db")

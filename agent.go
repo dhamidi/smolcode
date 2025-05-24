@@ -44,6 +44,8 @@ func Code(conversationID string, modelName string, newConversationFlag bool, mcp
 			conversationWasNewlyCreated = true
 		} else {
 			conversationWasNewlyCreated = false
+			// DEBUG: Dump loaded conversation
+			fmt.Printf("DEBUG Code(): Loaded conversation data: %s\n", AsJSON(loadedConv))
 		}
 	} else if newConversationFlag {
 		// Explicitly start a new conversation
@@ -70,6 +72,8 @@ func Code(conversationID string, modelName string, newConversationFlag bool, mcp
 			} else {
 				conversationWasNewlyCreated = false
 				// fmt.Printf("Successfully loaded latest conversation ID: %s\n", loadedConv.ID) // Removed
+				// DEBUG: Dump loaded conversation
+				fmt.Printf("DEBUG Code(): Loaded latest conversation data: %s\n", AsJSON(loadedConv))
 			}
 		} else {
 			fmt.Println("No existing conversations found.")
@@ -88,36 +92,39 @@ func Code(conversationID string, modelName string, newConversationFlag bool, mcp
 
 	// Populate initialHistoryForAgent from loadedConv.Messages
 	if loadedConv != nil && loadedConv.Messages != nil {
-		for _, msgWrapper := range loadedConv.Messages {
+		fmt.Fprintf(os.Stdout, "DEBUG Code(): Processing %d raw messages from loadedConv.Messages\n", len(loadedConv.Messages))
+		for i, msgWrapper := range loadedConv.Messages { // Added index i
 			if payloadBytes, ok := msgWrapper.Payload.([]byte); ok {
+				fmt.Fprintf(os.Stdout, "DEBUG Code(): [Msg %d/%d] Attempting to unmarshal payload (primary path). Bytes length: %d\n", i+1, len(loadedConv.Messages), len(payloadBytes))
 				var contentPart genai.Content
 				unmarshalErr := json.Unmarshal(payloadBytes, &contentPart)
 				if unmarshalErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: could not unmarshal genai.Content from DB bytes: %v\n", unmarshalErr)
+					fmt.Fprintf(os.Stderr, "ERROR Code(): [Msg %d/%d] Primary unmarshal failed: %v. Raw payload for msg %d: %s\n", i+1, len(loadedConv.Messages), unmarshalErr, i+1, string(payloadBytes))
 					continue
 				}
+				fmt.Fprintf(os.Stdout, "DEBUG Code(): [Msg %d/%d] Primary unmarshal SUCCESS.\n", i+1, len(loadedConv.Messages))
 				initialHistoryForAgent = append(initialHistoryForAgent, &contentPart)
 			} else {
 				// This case implies that the payload stored in the DB (and loaded by history.Load)
-				// was not []byte. This could happen if old data exists or if there's a mismatch
-				// in saving logic. For robustness, try the map[string]interface{} conversion as a fallback.
-				// fmt.Fprintf(os.Stderr, "Warning: message payload in DB was not []byte (type: %T). Attempting fallback conversion.\n", msgWrapper.Payload) // Commented out
+				fmt.Fprintf(os.Stderr, "WARNING Code(): [Msg %d/%d] Payload was NOT []byte (type: %T). Attempting fallback. Payload for msg %d: %+v\n", i+1, len(loadedConv.Messages), msgWrapper.Payload, i+1, msgWrapper.Payload)
 				var contentPart genai.Content
 				fallbackPayloadBytes, marshalErr := json.Marshal(msgWrapper.Payload) // marshal the map/value
 				if marshalErr != nil {
-					// fmt.Fprintf(os.Stderr, "Warning: fallback - could not marshal message payload for history: %v\n", marshalErr) // Commented out
+					fmt.Fprintf(os.Stderr, "ERROR Code(): [Msg %d/%d] Fallback marshal failed for msg %d: %v\n", i+1, len(loadedConv.Messages), i+1, marshalErr)
 					continue
 				}
+				fmt.Fprintf(os.Stdout, "DEBUG Code(): [Msg %d/%d] Attempting to unmarshal payload (fallback path). Bytes length: %d\n", i+1, len(loadedConv.Messages), len(fallbackPayloadBytes))
 				unmarshalErr := json.Unmarshal(fallbackPayloadBytes, &contentPart) // unmarshal into typed struct
 				if unmarshalErr != nil {
-					// fmt.Fprintf(os.Stderr, "Warning: fallback - could not unmarshal message payload into genai.Content: %v\n", unmarshalErr) // Commented out
+					fmt.Fprintf(os.Stderr, "ERROR Code(): [Msg %d/%d] Fallback unmarshal failed for msg %d: %v. Raw fallback payload: %s\n", i+1, len(loadedConv.Messages), i+1, unmarshalErr, string(fallbackPayloadBytes))
 					continue
 				}
+				fmt.Fprintf(os.Stdout, "DEBUG Code(): [Msg %d/%d] Fallback unmarshal SUCCESS.\n", i+1, len(loadedConv.Messages))
 				initialHistoryForAgent = append(initialHistoryForAgent, &contentPart)
 			}
 
 		}
-		// fmt.Printf("Loaded %d messages into agent history.\n", len(initialHistoryForAgent)) // Removed
+		fmt.Fprintf(os.Stdout, "DEBUG Code(): Finished processing messages. InitialHistoryForAgent length: %d\n", len(initialHistoryForAgent))
 	}
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
