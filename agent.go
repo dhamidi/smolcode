@@ -876,14 +876,10 @@ func (agent *Agent) persistFullConversationToDB() error {
 		// For now, let\'s assume we want to store the serializable representation (e.g., JSON).
 		// The history package itself handles the marshaling of messages when Save is called.
 		// So, we just need to append the *genai.Content objects directly.
-		// Marshal genai.Content to []byte before appending
-		contentBytes, err := json.Marshal(content)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not marshal genai.Content to save to DB for content: %+v, Error: %v\n", content, err)
-			// Decide if we should skip this message or return an error for the whole persistence operation
-			continue // Skip this problematic message
-		}
-		agent.persistentConversation.Append(contentBytes) // Append the marshaled []byte
+		// Append the *genai.Content object directly to the history.
+		// The history.Save() method will handle marshaling this to JSON.
+		agent.persistentConversation.Append(content)
+
 	}
 	agent.trace("PersistToDB", map[string]string{"status": "appending_history_as_bytes", "count": fmt.Sprintf("%d", len(agent.persistentConversation.Messages))})
 
