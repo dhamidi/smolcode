@@ -400,13 +400,10 @@ func (agent *Agent) refreshCache(ctx context.Context) {
 func (agent *Agent) Run(ctx context.Context) error {
 	// Defer closing of all active MCP servers
 	defer func() {
-		agent.displayer.DisplayMessage("MCP Shutdown", "94", -1, "Shutting down MCP servers...")
 		for _, mcpServer := range agent.mcpActiveServers {
-			agent.displayer.DisplayMessage("MCP Shutdown", "94", -1, "Closing MCP server: %s", mcpServer.ID())
 			if err := mcpServer.Close(); err != nil {
 				agent.displayer.DisplayError("Error closing MCP server %s: %v", mcpServer.ID(), err)
 			} else {
-				agent.displayer.DisplayMessage("MCP Shutdown", "92", -1, "MCP server %s closed successfully.", mcpServer.ID())
 			}
 		}
 	}()
