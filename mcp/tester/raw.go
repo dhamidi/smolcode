@@ -305,7 +305,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("RPC call 'initialize' failed: %v", err)
 	}
-	log.Printf("'initialize' call successful. Reply: %+v\n", initReply)
+	log.Printf("[SUCCESS] 'initialize' call successful. Reply: %+v\n", initReply)
 
 	log.Println("Sending RPC notification to 'notifications/initialized'...")
 	notifyCtx, notifyCancel := context.WithTimeout(mainOpCtx, 5*time.Second)
@@ -314,7 +314,7 @@ func main() {
 	if err != nil {
 		log.Printf("RPC notification 'notifications/initialized' failed: %v", err)
 	} else {
-		log.Println("RPC notification 'notifications/initialized' sent successfully.")
+		log.Println("[SUCCESS] RPC notification 'notifications/initialized' sent successfully.")
 	}
 
 	log.Println("Sending RPC request to 'tools/list'...")
@@ -326,8 +326,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("RPC call 'tools/list' failed: %v", err)
 	}
-	log.Println("RPC call 'tools/list' successful.")
-	fmt.Printf("Response from 'tools/list': %+v\n", listReply)
+	log.Println("[SUCCESS] RPC call 'tools/list' successful.")
+	fmt.Printf("[RESULT] Response from 'tools/list':\n%+v\n", listReply)
 
 	log.Println("Sending RPC request to 'tools/call' for 'fetch' tool...")
 	toolCallParams := map[string]interface{}{
@@ -343,10 +343,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("RPC call 'tools/call' for 'fetch' failed: %v", err)
 	}
-	log.Println("RPC call 'tools/call' for 'fetch' successful.")
-	fmt.Printf("Response from 'tools/call' (fetch):\n%+v\n", toolCallReply)
+	log.Println("[SUCCESS] RPC call 'tools/call' for 'fetch' successful.")
+	fmt.Printf("[RESULT] Response from 'tools/call' (fetch):\n%+v\n", toolCallReply)
 
-	log.Println("MCP tester finished successfully using jsonrpc2 client.")
+	log.Println("[SUCCESS] MCP tester finished successfully using jsonrpc2 client.")
 }
 
 // trimSpace removes leading and trailing ASCII white space from a byte slice.
