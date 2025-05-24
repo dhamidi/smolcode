@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings" // Added for NewServer
-	"sync"    // Added for request ID generation
 
 	"github.com/dhamidi/smolcode/mcp/jsonrpc2" // Assuming this is the correct path
 )
@@ -60,8 +59,6 @@ type Server struct {
 	rpcClient *jsonrpc2.Client
 	closer    io.Closer // To close the subprocess's pipes
 
-	requestIDLock    sync.Mutex // To protect access to requestIDCounter
-	requestIDCounter int64      // For generating unique JSON-RPC request IDs
 }
 
 // --- Structs for JSON-RPC requests and responses ---
@@ -134,7 +131,7 @@ func NewServer(id string, cmd string) *Server {
 		cmdPath: cmdPath,
 		cmdArgs: cmdArgs,
 		// rpcClient, proc, and closer will be set in Start()
-		requestIDCounter: 0, // Initialized to 0
+		// requestIDCounter: 0, // Removed as jsonrpc2.Client handles IDs
 	}
 }
 
@@ -159,7 +156,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.closer = rwc // Store for later closing in Server.Close()
 
 	transport := NewStdioTransport(rwc)
-	s.rpcClient = jsonrpc2.NewClient(transport, s.generateRequestID)
+	s.rpcClient = jsonrpc2.NewClient(transport) // Removed s.generateRequestID; client should handle IDs or they are set on callArgs
 
 	// Start the server process
 	if err := s.proc.Start(); err != nil {
@@ -265,20 +262,12 @@ func (s *Server) Call(ctx context.Context, toolName string, params map[string]an
 	return callResult.Content, nil
 }
 
-// generateRequestID generates a new unique ID for a JSON-RPC request.
-func (s *Server) generateRequestID() interface{} {
-	s.requestIDLock.Lock()
-	defer s.requestIDLock.Unlock()
-	s.requestIDCounter++
-	return s.requestIDCounter
-}
-
 // Close shuts down the server and cleans up resources.
 func (s *Server) Close() error {
 	var firstErr error
 
 	// 1. Close the jsonrpc2.Client connection.
-	// This should also signal the listener goroutine to stop and close the transport.
+	// This should also signal the listener goroutine to stop and close the transport (which includes s.closer).
 	if s.rpcClient != nil {
 		if err := s.rpcClient.Close(); err != nil {
 			firstErr = fmt.Errorf("failed to close rpc client: %w", err)
@@ -286,15 +275,8 @@ func (s *Server) Close() error {
 	}
 
 	// 2. Close the stdio pipes (reader/writer/closer for the transport)
-	if s.closer != nil {
-		if err := s.closer.Close(); err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("failed to close server pipes: %w", err)
-			} else {
-				fmt.Fprintf(os.Stderr, "Additional error while closing server pipes: %v\n", err)
-			}
-		}
-	}
+	// This should now be handled by rpcClient.Close() -> transport.Close() -> stdioTransport.Close() -> s.closer.Close()
+	// if s.closer != nil { ... } // Removed redundant direct close of s.closer
 
 	// 3. Terminate the server subprocess.
 	if s.proc != nil && s.proc.Process != nil {
@@ -328,7 +310,7 @@ func (s *Server) Close() error {
 
 // stdioTransport implements jsonrpc2.Transport for stdio.
 type stdioTransport struct {
-	encoder *json.Encoder
+	writer  io.Writer // Changed from encoder to writer
 	decoder *json.Decoder
 	closer  io.Closer
 }
@@ -336,48 +318,44 @@ type stdioTransport struct {
 // NewStdioTransport creates a new transport for stdio communication.
 func NewStdioTransport(rwc io.ReadWriteCloser) *stdioTransport {
 	return &stdioTransport{
-		encoder: json.NewEncoder(rwc),
-		decoder: json.NewDecoder(rwc), // Corrected: should be rwc, not just r
+		writer:  rwc,                  // Store the writer part of rwc
+		decoder: json.NewDecoder(rwc), // Decoder uses the reader part of rwc
 		closer:  rwc,
 	}
 }
 
 // Send sends a payload.
-func (t *stdioTransport) Send(ctx context.Context, req jsonrpc2.Request) error {
-	// The mcp/docs.md example shows `payload []byte` but jsonrpc2.Client.Call uses `jsonrpc2.Request`.
-	// We will assume the client marshals the request, and we just encode it here.
-	// Or, if client.Call expects Transport to handle full request objects:
+func (t *stdioTransport) Send(ctx context.Context, payload []byte) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
-		// Ensure payload is written atomically if possible, or handle framing (e.g. newline)
-		// The json.Encoder handles adding a newline by default.
-		return t.encoder.Encode(req)
+		// Assuming payload is a complete JSON message.
+		// We need to add a newline for line-based JSON RPC.
+		if _, err := t.writer.Write(payload); err != nil {
+			return fmt.Errorf("stdioTransport.Send: failed to write payload: %w", err)
+		}
+		if _, err := t.writer.Write([]byte{'\n'}); err != nil {
+			return fmt.Errorf("stdioTransport.Send: failed to write newline: %w", err)
+		}
+		return nil
 	}
 }
 
 // Receive receives a payload.
-func (t *stdioTransport) Receive(ctx context.Context) (jsonrpc2.Response, error) {
-	// The mcp/docs.md example shows `[]byte` but jsonrpc2.Client.Listen expects `jsonrpc2.Response`.
-	// We will assume the client expects a fully formed Response object.
-	var resp jsonrpc2.Response
+func (t *stdioTransport) Receive(ctx context.Context) ([]byte, error) {
 	// The json.Decoder handles reading one JSON object at a time from the stream.
 	// We need to handle context cancellation during blocking Decode.
-	// This is tricky as Decode doesn't take a context.
-	// A common pattern is to use a separate goroutine for Decode and use a channel,
-	// or to make the underlying ReadWriteCloser context-aware (e.g., by closing it).
-
 	errChan := make(chan error, 1)
-	respChan := make(chan jsonrpc2.Response, 1)
+	byteChan := make(chan []byte, 1)
 
 	go func() {
-		var rawResp jsonrpc2.Response // Decode into a temporary to avoid race if Decode hangs and ctx expires
-		if err := t.decoder.Decode(&rawResp); err != nil {
+		var raw json.RawMessage
+		if err := t.decoder.Decode(&raw); err != nil {
 			errChan <- err
 			return
 		}
-		respChan <- rawResp
+		byteChan <- []byte(raw)
 	}()
 
 	select {
@@ -385,21 +363,28 @@ func (t *stdioTransport) Receive(ctx context.Context) (jsonrpc2.Response, error)
 		// Attempt to unblock the Decode by closing the underlying connection.
 		// This is crucial if the Decode is stuck.
 		if t.closer != nil {
-			// Best effort, error ignored as we are already in an error path (ctx.Err())
 			_ = t.closer.Close()
 		}
-		return jsonrpc2.Response{}, ctx.Err()
+		return nil, ctx.Err()
 	case err := <-errChan:
-		return jsonrpc2.Response{}, err
-	case r := <-respChan:
-		return r, nil
+		return nil, err
+	case data := <-byteChan:
+		return data, nil
 	}
 }
 
 // Close closes the transport.
 func (t *stdioTransport) Close() error {
 	if t.closer != nil {
-		return t.closer.Close()
+		err := t.closer.Close()
+		// Check for os.ErrClosed specifically. Since os.ErrClosed is a specific error value,
+		// direct comparison is fine. Using err.Error() == os.ErrClosed.Error() is also okay
+		// but direct comparison is more idiomatic for sentinel errors.
+		if err == os.ErrClosed {
+			// log.Println("stdioTransport.Close: Closer was already closed, ignoring.")
+			return nil
+		}
+		return err
 	}
 	return nil
 }
