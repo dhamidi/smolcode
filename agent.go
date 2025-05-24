@@ -368,7 +368,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 		}
 
 		// Print usage metadata summary
-		agent.displayer.Display(fmt.Sprintf("\u001b[90m%s\u001b[0m", formatUsageMetadata(response.UsageMetadata)))
+		agent.displayer.DisplayMessage("Usage", "90m", -1, "%s", formatUsageMetadata(response.UsageMetadata))
 
 		if len(response.Candidates) == 0 {
 			agent.errorMessage("empty response received")
