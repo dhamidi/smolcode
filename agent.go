@@ -213,34 +213,34 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		OriginalName string
 	})
 
-	fmt.Printf("Initializing MCP servers based on %d configurations...\\n", len(agent.mcpConfigs))
+	agent.displayer.DisplayMessage("MCP Init", "cyan", -1, "Initializing MCP servers based on %d configurations...", len(agent.mcpConfigs))
 	for _, serverConfig := range agent.mcpConfigs {
-		fmt.Printf("Attempting to create MCP server instance for ID %s (command: %s)\\n", serverConfig.ID, serverConfig.Command)
+		agent.displayer.DisplayMessage("MCP Init", "cyan", -1, "Attempting to create MCP server instance for ID %s (command: %s)", serverConfig.ID, serverConfig.Command)
 		server := mcp.NewServer(serverConfig.ID, serverConfig.Command)
 		if server == nil {
-			fmt.Fprintf(os.Stderr, "Error creating MCP server instance for ID %s (command: %s): NewServer returned nil\\n", serverConfig.ID, serverConfig.Command)
+			agent.displayer.DisplayError("Error creating MCP server instance for ID %s (command: %s): NewServer returned nil", serverConfig.ID, serverConfig.Command)
 			continue
 		}
 
-		fmt.Printf("Attempting to start MCP server %s...\\n", serverConfig.ID)
+		agent.displayer.DisplayMessage("MCP Init", "cyan", -1, "Attempting to start MCP server %s...", serverConfig.ID)
 		// Using context.Background() for now, consider if a more specific context is needed
 		if err := server.Start(context.Background()); err != nil {
-			fmt.Fprintf(os.Stderr, "Error starting MCP server %s (command: %s): %v\\n", serverConfig.ID, serverConfig.Command, err)
+			agent.displayer.DisplayError("Error starting MCP server %s (command: %s): %v", serverConfig.ID, serverConfig.Command, err)
 			continue
 		}
-		fmt.Printf("MCP Server %s started successfully.\\n", serverConfig.ID)
+		agent.displayer.DisplayMessage("MCP Init", "green", -1, "MCP Server %s started successfully.", serverConfig.ID)
 		agent.mcpActiveServers = append(agent.mcpActiveServers, server)
 
 		// Fetch tools from this active MCP server
-		fmt.Printf("Fetching tools from MCP server %s...\\n", server.ID())
+		agent.displayer.DisplayMessage("MCP Init", "cyan", -1, "Fetching tools from MCP server %s...", server.ID())
 		toolsFromServer, err := server.ListTools(context.Background()) // Using context.Background() for now
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error listing tools from MCP server %s: %v\\n", server.ID(), err)
+			agent.displayer.DisplayError("Error listing tools from MCP server %s: %v", server.ID(), err)
 			// We might still want to keep the server active even if listing tools fails initially.
 			// Depending on desired robustness, could 'continue' here or allow agent to proceed.
 			continue
 		}
-		fmt.Printf("Fetched %d tools from MCP server %s\\n", len(toolsFromServer), server.ID())
+		agent.displayer.DisplayMessage("MCP Init", "cyan", -1, "Fetched %d tools from MCP server %s", len(toolsFromServer), server.ID())
 		agent.mcpTools = append(agent.mcpTools, toolsFromServer...)
 
 		// Populate agent's toolbox with these tools
@@ -251,7 +251,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 			if len(mcpT.RawInputSchema) > 0 && string(mcpT.RawInputSchema) != "null" {
 				schemaErr := json.Unmarshal(mcpT.RawInputSchema, &paramSchema)
 				if schemaErr != nil {
-					fmt.Fprintf(os.Stderr, "Error unmarshalling schema for MCP tool %s from server %s: %v\\n", mcpT.Name, server.ID(), schemaErr)
+					agent.displayer.DisplayError("Error unmarshalling schema for MCP tool %s from server %s: %v", mcpT.Name, server.ID(), schemaErr)
 					continue // Skip this tool if schema is invalid
 				}
 			} else {
@@ -270,7 +270,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 				FunctionDeclarations: []*genai.FunctionDeclaration{declaration},
 			}
 			agent.tools.Add(&ToolDefinition{Tool: mcpGenaiTool, Function: nil}) // MCP tools are executed via RPC, not a local Go func
-			fmt.Printf("Added MCP tool declaration to agent toolbox: %s\\n", agentToolName)
+			agent.displayer.DisplayMessage("MCP Init", "green", -1, "Added MCP tool declaration to agent toolbox: %s", agentToolName)
 
 			// Store mapping for execution
 			agent.mcpToolExecutionMap[agentToolName] = struct {
@@ -282,7 +282,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 			}
 		}
 	}
-	fmt.Printf("MCP server initialization complete. Active MCP servers: %d. Total MCP tools mapped: %d\\n", len(agent.mcpActiveServers), len(agent.mcpToolExecutionMap))
+	agent.displayer.DisplayMessage("MCP Init", "green", -1, "MCP server initialization complete. Active MCP servers: %d. Total MCP tools mapped: %d", len(agent.mcpActiveServers), len(agent.mcpToolExecutionMap))
 
 	return agent
 
@@ -402,13 +402,13 @@ func (agent *Agent) refreshCache(ctx context.Context) {
 func (agent *Agent) Run(ctx context.Context) error {
 	// Defer closing of all active MCP servers
 	defer func() {
-		fmt.Println("Shutting down MCP servers...")
+		agent.displayer.DisplayMessage("MCP Shutdown", "blue", -1, "Shutting down MCP servers...")
 		for _, mcpServer := range agent.mcpActiveServers {
-			fmt.Printf("Closing MCP server: %s\n", mcpServer.ID())
+			agent.displayer.DisplayMessage("MCP Shutdown", "blue", -1, "Closing MCP server: %s", mcpServer.ID())
 			if err := mcpServer.Close(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error closing MCP server %s: %v\n", mcpServer.ID(), err)
+				agent.displayer.DisplayError("Error closing MCP server %s: %v", mcpServer.ID(), err)
 			} else {
-				fmt.Printf("MCP server %s closed successfully.\n", mcpServer.ID())
+				agent.displayer.DisplayMessage("MCP Shutdown", "green", -1, "MCP server %s closed successfully.", mcpServer.ID())
 			}
 		}
 	}()
