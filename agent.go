@@ -535,11 +535,9 @@ func (agent *Agent) Run(ctx context.Context) error {
 }
 
 func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
-	agent.toolMessage("Attempting to execute tool: %s", call.Name)
+	agent.toolMessage("Tool call %s with parameters: %s", call.Name, AsJSON(call.Args))
 	// Check if it's an MCP tool first
 	if execDetails, isMCPTool := agent.mcpToolExecutionMap[call.Name]; isMCPTool {
-		agent.toolMessage("Executing MCP tool %s (original: %s) via server %s", call.Name, execDetails.OriginalName, execDetails.Server.ID())
-
 		// Ensure call.Args is not nil, as mcp.Server.Call expects map[string]any
 		argsToSend := call.Args
 		if argsToSend == nil {
@@ -549,7 +547,7 @@ func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
 		resultContents, err := execDetails.Server.Call(context.Background(), execDetails.OriginalName, argsToSend)
 		var responseData map[string]any
 		if err != nil {
-			agent.toolMessage("MCP tool %s execution error: %v", call.Name, err)
+			agent.toolMessage("Tool %s execution error: %v", call.Name, err)
 			// Try to include any partial content if the error indicates a tool-side error but still returned content
 			if len(resultContents) > 0 && resultContents[0].Type == "text" {
 				responseData = map[string]any{"error": err.Error(), "details": resultContents[0].Text}
@@ -562,36 +560,35 @@ func (agent *Agent) executeTool(call *genai.FunctionCall) *genai.Content {
 			if len(resultContents) > 0 {
 				if resultContents[0].Type == "text" {
 					responseData = map[string]any{"output": resultContents[0].Text}
-					agent.toolMessage("MCP tool %s result: %s", call.Name, CropText(resultContents[0].Text, 70))
+					agent.toolMessage("Tool %s result: %s", call.Name, CropText(resultContents[0].Text, 70))
 				} else if resultContents[0].Type == "image" {
 					responseData = map[string]any{"output": fmt.Sprintf("[Image data received, mime: %s]", resultContents[0].MimeType)}
-					agent.toolMessage("MCP tool %s result: Image data (mime: %s)", call.Name, resultContents[0].MimeType)
+					agent.toolMessage("Tool %s result: Image data (mime: %s)", call.Name, resultContents[0].MimeType)
 				} else {
 					responseData = map[string]any{"output": fmt.Sprintf("[Unknown MCP content type: %s]", resultContents[0].Type)}
-					agent.toolMessage("MCP tool %s result: Unknown content type %s", call.Name, resultContents[0].Type)
+					agent.toolMessage("Tool %s result: Unknown content type %s", call.Name, resultContents[0].Type)
 				}
 			} else {
 				responseData = map[string]any{"output": "MCP tool executed successfully, no content returned."}
-				agent.toolMessage("MCP tool %s: No content returned", call.Name)
+				agent.toolMessage("Tool %s: No content returned", call.Name)
 			}
 		}
 		return genai.NewContentFromFunctionResponse(call.Name, responseData, "tool")
 	}
 
 	// If not an MCP tool, proceed with existing local tool execution logic
-	agent.toolMessage("Executing local tool: %s", call.Name)
 	tool, found := agent.tools.Get(call.Name)
 	if !found {
-		agent.toolMessage("Local tool %s not found", call.Name)
+		agent.toolMessage("Tool %s not found", call.Name)
 		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": "tool not found"}, "tool")
 	}
 	result, err := tool.Function(call.Args)
 	if err != nil {
-		agent.toolMessage("Local tool %s execution error: %v", call.Name, err)
+		agent.toolMessage("Tool %s execution error: %v", call.Name, err)
 		return genai.NewContentFromFunctionResponse(call.Name, map[string]any{"error": err.Error()}, "tool")
 	}
 
-	agent.toolMessage("Local tool %s result: %s", call.Name, CropText(AsJSON(result), 70))
+	agent.toolMessage("Tool %s result: %s", call.Name, CropText(AsJSON(result), 70))
 	return genai.NewContentFromFunctionResponse(call.Name, result, "tool")
 }
 
