@@ -71,7 +71,7 @@ func (g *GlamourousTextDisplay) Display(content string) error {
 		fmt.Fprintf(os.Stderr, "Glamour rendering failed: %v. Falling back to raw display.\n", err) // It's good to inform about the fallback
 		return g.RawTextDisplay.Display(content)
 	}
-	fmt.Println(prettyOutput)
+	fmt.Print(prettyOutput)
 	return nil
 }
 
@@ -110,5 +110,5 @@ func (g *GlamourousTextDisplay) DisplayMessage(role string, colorCode string, hi
 	fmt.Printf(rolePrefix) // Print prefix without newline
 
 	// Print the glamour-rendered message (which usually includes its own newline handling)
-	fmt.Println(prettyOutput)
+	fmt.Print(prettyOutput)
 }
