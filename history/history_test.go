@@ -38,7 +38,7 @@ func newTestDB(t *testing.T) (*sql.DB, string, func()) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		conversation_id TEXT NOT NULL,
 		sequence_number INTEGER NOT NULL,
-		payload BLOB NOT NULL,
+		payload TEXT NOT NULL,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id),
 		UNIQUE (conversation_id, sequence_number)
