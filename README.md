@@ -52,6 +52,8 @@ This section details the necessary environment variables and files used by `smol
 Based on the current analysis, `smolcode` itself does not directly require specific environment variables to be set for its core operation. However, the tools it interacts with, particularly the Google Gemini API, will require appropriate authentication.
 
 *   `GEMINI_API_KEY`: Your API key for Google Gemini. This is required for the agent to communicate with the language model.
+*   `SHELL`: Specifies the shell to be used when executing commands. Used by the `run_command` tool.
+*   `INCEPTION_API_KEY`: Your API key for the Inception service. Used by the `generate_code` tool.
 
 _(If other environment variables are identified as directly used by `smolcode` in the future, they will be listed here.)_
 
