@@ -118,12 +118,13 @@ func SaveTo(conversation *Conversation, dbPath string) error {
 	defer stmt.Close()
 
 	for i, msg := range conversation.Messages {
-		payload, jsonErr := json.Marshal(msg.Payload) // Marshal only the payload
+		jsonBytes, jsonErr := json.Marshal(msg.Payload) // Marshal only the payload
 		if jsonErr != nil {
 			tx.Rollback()
 			return jsonErr
 		}
-		_, err = stmt.Exec(conversation.ID, i, payload, msg.CreatedAt)
+		payloadString := string(jsonBytes)                                   // Convert byte slice to string
+		_, err = stmt.Exec(conversation.ID, i, payloadString, msg.CreatedAt) // Store as string
 		if err != nil {
 			tx.Rollback()
 			return err
