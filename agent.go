@@ -247,16 +247,10 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		for _, mcpT := range toolsFromServer { // mcpT is of type mcp.Tool
 			agentToolName := fmt.Sprintf("%s_%s", server.ID(), mcpT.Name)
 
-			var paramSchema *genai.Schema
-			if len(mcpT.RawInputSchema) > 0 && string(mcpT.RawInputSchema) != "null" {
-				schemaErr := json.Unmarshal(mcpT.RawInputSchema, &paramSchema)
-				if schemaErr != nil {
-					agent.displayer.DisplayError("Error unmarshalling schema for MCP tool %s from server %s: %v", mcpT.Name, server.ID(), schemaErr)
-					continue // Skip this tool if schema is invalid
-				}
-			} else {
-				// Create an empty schema if RawInputSchema is empty or "null"
-				paramSchema = &genai.Schema{Type: genai.TypeObject, Properties: map[string]*genai.Schema{}}
+			paramSchema, schemaErr := DeserializeToolSchema(mcpT.RawInputSchema)
+			if schemaErr != nil {
+				agent.displayer.DisplayError("Error deserializing schema via adapter for MCP tool %s from server %s: %v", mcpT.Name, server.ID(), schemaErr)
+				continue // Skip this tool if schema is invalid
 			}
 
 			declaration := &genai.FunctionDeclaration{
