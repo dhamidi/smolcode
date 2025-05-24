@@ -9,3 +9,5 @@ tmp/
 
 # Test artifacts
 *.tar
+output.txt
+tester
