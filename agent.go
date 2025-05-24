@@ -213,34 +213,37 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		OriginalName string
 	})
 
-	agent.displayer.DisplayMessage("MCP Init", "95", -1, "Initializing MCP servers based on %d configurations...", len(agent.mcpConfigs))
+	// agent.displayer.DisplayMessage("MCP Init", "95", -1, "Initializing MCP servers based on %d configurations...", len(agent.mcpConfigs)) // Conditional logging
 	for _, serverConfig := range agent.mcpConfigs {
-		agent.displayer.DisplayMessage("MCP Init", "95", -1, "Attempting to create MCP server instance for ID %s (command: %s)", serverConfig.ID, serverConfig.Command)
+		// agent.displayer.DisplayMessage("MCP Init", "95", -1, "Attempting to create MCP server instance for ID %s (command: %s)", serverConfig.ID, serverConfig.Command) // Conditional logging
 		server := mcp.NewServer(serverConfig.ID, serverConfig.Command)
 		if server == nil {
+			agent.displayer.DisplayMessage("MCP Init", "95", -1, "Attempting to create MCP server instance for ID %s (command: %s)", serverConfig.ID, serverConfig.Command) // Log only on error
 			agent.displayer.DisplayError("Error creating MCP server instance for ID %s (command: %s): NewServer returned nil", serverConfig.ID, serverConfig.Command)
 			continue
 		}
 
-		agent.displayer.DisplayMessage("MCP Init", "95", -1, "Attempting to start MCP server %s...", serverConfig.ID)
+		// agent.displayer.DisplayMessage("MCP Init", "95", -1, "Attempting to start MCP server %s...", serverConfig.ID) // Conditional logging
 		// Using context.Background() for now, consider if a more specific context is needed
 		if err := server.Start(context.Background()); err != nil {
+			agent.displayer.DisplayMessage("MCP Init", "95", -1, "Attempting to start MCP server %s...", serverConfig.ID) // Log only on error
 			agent.displayer.DisplayError("Error starting MCP server %s (command: %s): %v", serverConfig.ID, serverConfig.Command, err)
 			continue
 		}
-		agent.displayer.DisplayMessage("MCP Init", "95", -1, "MCP Server %s started successfully.", serverConfig.ID)
+		// agent.displayer.DisplayMessage("MCP Init", "95", -1, "MCP Server %s started successfully.", serverConfig.ID) // Removed success message
 		agent.mcpActiveServers = append(agent.mcpActiveServers, server)
 
 		// Fetch tools from this active MCP server
-		agent.displayer.DisplayMessage("MCP Init", "95", -1, "Fetching tools from MCP server %s...", server.ID())
+		// agent.displayer.DisplayMessage("MCP Init", "95", -1, "Fetching tools from MCP server %s...", server.ID()) // Conditional logging
 		toolsFromServer, err := server.ListTools(context.Background()) // Using context.Background() for now
 		if err != nil {
+			agent.displayer.DisplayMessage("MCP Init", "95", -1, "Fetching tools from MCP server %s...", server.ID()) // Log only on error
 			agent.displayer.DisplayError("Error listing tools from MCP server %s: %v", server.ID(), err)
 			// We might still want to keep the server active even if listing tools fails initially.
 			// Depending on desired robustness, could 'continue' here or allow agent to proceed.
 			continue
 		}
-		agent.displayer.DisplayMessage("MCP Init", "95", -1, "Fetched %d tools from MCP server %s", len(toolsFromServer), server.ID())
+		// agent.displayer.DisplayMessage("MCP Init", "95", -1, "Fetched %d tools from MCP server %s", len(toolsFromServer), server.ID()) // Removed success message
 		agent.mcpTools = append(agent.mcpTools, toolsFromServer...)
 
 		// Populate agent's toolbox with these tools
@@ -249,6 +252,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 
 			paramSchema, schemaErr := DeserializeToolSchema(mcpT.RawInputSchema)
 			if schemaErr != nil {
+				agent.displayer.DisplayMessage("MCP Init", "95", -1, "Error processing tool %s from server %s", mcpT.Name, server.ID()) // Log only on error
 				agent.displayer.DisplayError("Error deserializing schema via adapter for MCP tool %s from server %s: %v", mcpT.Name, server.ID(), schemaErr)
 				continue // Skip this tool if schema is invalid
 			}
@@ -264,7 +268,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 				FunctionDeclarations: []*genai.FunctionDeclaration{declaration},
 			}
 			agent.tools.Add(&ToolDefinition{Tool: mcpGenaiTool, Function: nil}) // MCP tools are executed via RPC, not a local Go func
-			agent.displayer.DisplayMessage("MCP Init", "95", -1, "Added MCP tool declaration to agent toolbox: %s", agentToolName)
+			// agent.displayer.DisplayMessage("MCP Init", "95", -1, "Added MCP tool declaration to agent toolbox: %s", agentToolName) // Removed success message
 
 			// Store mapping for execution
 			agent.mcpToolExecutionMap[agentToolName] = struct {
@@ -276,7 +280,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 			}
 		}
 	}
-	agent.displayer.DisplayMessage("MCP Init", "95", -1, "MCP server initialization complete. Active MCP servers: %d. Total MCP tools mapped: %d", len(agent.mcpActiveServers), len(agent.mcpToolExecutionMap))
+	// agent.displayer.DisplayMessage("MCP Init", "95", -1, "MCP server initialization complete. Active MCP servers: %d. Total MCP tools mapped: %d", len(agent.mcpActiveServers), len(agent.mcpToolExecutionMap)) // Removed summary message
 
 	return agent
 
