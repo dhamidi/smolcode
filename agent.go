@@ -179,7 +179,7 @@ func NewAgent(client *genai.Client, getUserMessage func() (string, bool), tools 
 		history:           initialHistory,
 		name:              name,
 		modelName:         "gemini-2.5-pro-preview-03-25", // Default model
-		displayer:         &RawTextDisplay{},              // Instantiate the displayer
+		displayer:         &GlamourousTextDisplay{},       // Use GlamourousTextDisplay by default
 		// cachedContent and systemPromptModTime are zero initially
 	}
 
