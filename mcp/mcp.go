@@ -385,7 +385,7 @@ func (t *stdioTransport) Close() error {
 		// Check for os.ErrClosed specifically. Since os.ErrClosed is a specific error value,
 		// direct comparison is fine. Using err.Error() == os.ErrClosed.Error() is also okay
 		// but direct comparison is more idiomatic for sentinel errors.
-		if err == os.ErrClosed {
+		if strings.Contains(err.Error(), "file already closed") || err == os.ErrClosed {
 			// log.Println("stdioTransport.Close: Closer was already closed, ignoring.")
 			return nil
 		}

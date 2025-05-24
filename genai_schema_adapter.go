@@ -20,14 +20,22 @@ var intAsStringKeysInSchema = map[string]bool{
 }
 
 // recursiveConvertNumericStringsForSchema traverses a map representing a JSON object.
-// If it finds keys that are known to be problematic in genai.Schema's UnmarshalJSON,
-// it converts their numeric values (which arrive as float64 from json.Unmarshal into interface{})
-// to their string representations.
+// It converts numeric values for specific keys to strings for genai.Schema compatibility
+// and removes unsupported 'format' values for 'string' types.
 func recursiveConvertNumericStringsForSchema(data map[string]interface{}) {
+	// Handle 'format' for 'string' type at the current level
+	if typeVal, typeOk := data["type"].(string); typeOk && typeVal == "string" {
+		if formatVal, formatOk := data["format"].(string); formatOk {
+			if formatVal != "enum" && formatVal != "date-time" {
+				delete(data, "format")
+			}
+		}
+	}
+
 	for key, value := range data {
+		// Existing logic for numeric string conversion
 		if intAsStringKeysInSchema[key] {
 			if numVal, ok := value.(float64); ok {
-				// Convert to string. These specific keys correspond to int64 fields.
 				data[key] = strconv.FormatInt(int64(numVal), 10)
 			}
 		}
@@ -43,8 +51,6 @@ func recursiveConvertNumericStringsForSchema(data map[string]interface{}) {
 				if itemMap, okItemMap := item.(map[string]interface{}); okItemMap {
 					recursiveConvertNumericStringsForSchema(itemMap)
 				}
-				// Note: No explicit handling for arrays of non-objects containing these keys,
-				// as it's less common in JSON schemas for these specific validation keywords.
 			}
 		}
 	}
